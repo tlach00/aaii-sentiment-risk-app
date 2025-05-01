@@ -41,7 +41,7 @@ with tab1:
     st.header("🗂 Raw AAII Sentiment Excel File")
     st.dataframe(raw_df)
 
-# --- Tab 2: S&P + Sentiment Charts ---
+# --- Tab 2: S&P + Sentiment Charts + MA Option + Checkbox Control ---
 with tab2:
     st.header("📆 Select Time Range for Analysis")
 
@@ -63,7 +63,7 @@ with tab2:
 
     st.subheader("📊 Market Overview")
 
-    # --- Compact Chart 1: S&P 500 ---
+    # --- Chart 1: S&P 500 ---
     st.markdown("##### 📉 S&P 500 Weekly Close (Log Scale)")
     fig1, ax1 = plt.subplots(figsize=(10, 2.5))
     ax1.plot(filtered_df["Date"], filtered_df["SP500_Close"], color="black")
@@ -72,53 +72,49 @@ with tab2:
     ax1.grid(True, linestyle="--", linewidth=0.5)
     st.pyplot(fig1)
 
-    # --- Compact Chart 2: Sentiment ---
-    st.markdown("##### 🧠 Investor Sentiment")
+    # --- Chart 2: Sentiment with checkboxes ---
+    st.markdown("##### 🧠 Investor Sentiment (Toggle View)")
+
+    col1, col2, col3 = st.columns(3)
+    show_bullish = col1.checkbox("Show Bullish", value=True)
+    show_neutral = col2.checkbox("Show Neutral", value=True)
+    show_bearish = col3.checkbox("Show Bearish", value=True)
+
     fig2, ax2 = plt.subplots(figsize=(10, 2.5))
-    ax2.plot(filtered_df["Date"], filtered_df["Bullish"], label="Bullish", color="green")
-    ax2.plot(filtered_df["Date"], filtered_df["Neutral"], label="Neutral", color="gray")
-    ax2.plot(filtered_df["Date"], filtered_df["Bearish"], label="Bearish", color="red")
+    if show_bullish:
+        ax2.plot(filtered_df["Date"], filtered_df["Bullish"], label="Bullish", color="green")
+    if show_neutral:
+        ax2.plot(filtered_df["Date"], filtered_df["Neutral"], label="Neutral", color="gray")
+    if show_bearish:
+        ax2.plot(filtered_df["Date"], filtered_df["Bearish"], label="Bearish", color="red")
     ax2.set_ylabel("Sentiment (%)")
     ax2.legend()
     ax2.grid(True, linestyle="--", linewidth=0.5)
     st.pyplot(fig2)
 
-    # --- Data Table ---
-    st.subheader("📋 Filtered Data Table")
-    st.dataframe(filtered_df, use_container_width=True, height=400)
+    # --- Moving Average Sentiment ---
+    st.markdown("##### 📈 Bullish Sentiment Moving Average")
+    ma_window = st.slider("Select MA Window (weeks):", 1, 52, 4, key="tab2_ma")
 
-# --- Tab 3: S&P 500 vs Bullish Sentiment (1-Year MA Option) ---
-with tab3:
-    st.header("📊 S&P 500 vs. Smoothed Bullish Sentiment (%)")
-
-    # User slider for MA window (1 to 52 weeks)
-    ma_window = st.slider("Select Moving Average Window (weeks):", min_value=1, max_value=52, value=4)
-
-    # Apply MA
     df_ma = filtered_df.copy()
     df_ma["Bullish_MA"] = df_ma["Bullish"].rolling(window=ma_window, min_periods=1).mean()
 
-    # Plot
-    fig3, ax1 = plt.subplots(figsize=(10, 3))
+    fig3, ax3 = plt.subplots(figsize=(10, 2.5))
+    ax3.plot(df_ma["Date"], df_ma["SP500_Close"], color="black", label="S&P 500")
+    ax4 = ax3.twinx()
+    ax4.plot(df_ma["Date"], df_ma["Bullish_MA"], color="green", label=f"Bullish Sentiment ({ma_window}-Week MA)")
+    ax3.set_ylabel("S&P 500 Price", color="black")
+    ax4.set_ylabel("Bullish Sentiment (%)", color="green")
+    fig3.suptitle(f"S&P 500 vs. Bullish Sentiment ({ma_window}-Week MA)", fontsize=12)
+    ax3.grid(True, linestyle="--", linewidth=0.5)
 
-    # Left y-axis: S&P 500
-    ax1.plot(df_ma["Date"], df_ma["SP500_Close"], color="black", label="S&P 500")
-    ax1.set_ylabel("S&P 500 Price", color="black")
-    ax1.tick_params(axis='y', labelcolor="black")
-
-    # Right y-axis: Bullish sentiment MA
-    ax2 = ax1.twinx()
-    ax2.plot(df_ma["Date"], df_ma["Bullish_MA"], color="green", label=f"Bullish Sentiment ({ma_window}-Week MA)")
-    ax2.set_ylabel("Bullish Sentiment (%)", color="green")
-    ax2.tick_params(axis='y', labelcolor="green")
-
-    # Title and grid
-    fig3.suptitle(f"S&P 500 vs. Bullish Sentiment ({ma_window}-Week MA)", fontsize=14)
-    ax1.grid(True, linestyle="--", linewidth=0.5)
-
-    # Combined legend
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left")
+    # Combine legends
+    lines1, labels1 = ax3.get_legend_handles_labels()
+    lines2, labels2 = ax4.get_legend_handles_labels()
+    ax3.legend(lines1 + lines2, labels1 + labels2, loc="upper left")
 
     st.pyplot(fig3)
+
+    # --- Table ---
+    st.subheader("📋 Filtered Data Table")
+    st.dataframe(filtered_df, use_container_width=True, height=400)
