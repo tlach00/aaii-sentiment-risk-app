@@ -39,10 +39,12 @@ with tab1:
 with tab2:
     st.header("📉 S&P 500 Weekly Close Price")
 
-    fig, ax = plt.subplots()
+    # Smaller chart + log scale
+    fig, ax = plt.subplots(figsize=(8, 3))
     ax.plot(clean_df["Date"], clean_df["SP500_Close"], color="black")
-    ax.set_title("S&P 500 Weekly Close")
-    ax.set_ylabel("Price")
+    ax.set_yscale("log")
+    ax.set_title("S&P 500 Weekly Close (Log Scale)", fontsize=14)
+    ax.set_ylabel("Price (log scale)")
     ax.grid(True, linestyle="--", linewidth=0.5)
     st.pyplot(fig)
 
