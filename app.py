@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import datetime
 from sklearn.preprocessing import MinMaxScaler
+import statsmodels.api as sm
 
 st.set_page_config(page_title="AAII Sentiment Risk App", layout="wide")
 
@@ -29,7 +30,7 @@ clean_df = load_clean_data()
 tab1, tab2, tab3 = st.tabs([
     "\U0001F5C2 Raw Excel Viewer",
     "\U0001F4C8 Interactive Dashboard",
-    "\U0001F4CA Smoothed Sentiment vs S&P"
+    "\U0001F52C Factor Model"
 ])
 
 with tab1:
@@ -99,27 +100,26 @@ with tab2:
     st.dataframe(filtered_df, use_container_width=True, height=400)
 
 with tab3:
-    st.header("\U0001F4CA S&P 500 vs. Smoothed Bullish Sentiment (%)")
-    ma_window = st.slider("Select Moving Average Window (weeks):", 1, 52, 4, key="tab3_ma")
+    st.header("\U0001F52C Factor Model: Explaining S&P 500 Returns")
 
-    df_ma = filtered_df.copy()
-    df_ma["Bullish_MA"] = df_ma["Bullish"].rolling(window=ma_window, min_periods=1).mean()
+    st.markdown("This model estimates how weekly returns of the S&P 500 are influenced by investor sentiment.")
 
-    fig3, ax1 = plt.subplots(figsize=(10, 2))
-    ax1.plot(df_ma["Date"], df_ma["SP500_Close"], color="black", label="S&P 500", linewidth=0.8)
-    ax1.set_ylabel("S&P 500 Price", fontsize=8, color="black")
-    ax1.tick_params(axis='y', labelcolor="black", labelsize=7)
+    reg_data = filtered_df[["Bullish", "Neutral", "Bearish", "SP500_Return"]].dropna()
 
-    ax2 = ax1.twinx()
-    ax2.plot(df_ma["Date"], df_ma["Bullish_MA"], color="green", label=f"\U0001F402 Bullish ({ma_window}-W MA)", linewidth=0.8)
-    ax2.set_ylabel("Bullish Sentiment (%)", fontsize=8, color="green")
-    ax2.tick_params(axis='y', labelcolor="green", labelsize=7)
+    X = reg_data[["Bullish", "Neutral", "Bearish"]]
+    X = sm.add_constant(X)
+    y = reg_data["SP500_Return"]
 
-    ax1.tick_params(axis='x', labelsize=7)
-    ax2.tick_params(axis='x', labelsize=7)
-    ax1.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
+    model = sm.OLS(y, X).fit()
 
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=7, frameon=False)
-    st.pyplot(fig3)
+    st.markdown("### Regression Summary")
+    st.text(model.summary())
+
+    st.markdown("### Factor Coefficients")
+    fig_coef, ax_coef = plt.subplots(figsize=(6, 2))
+    model.params[1:].plot(kind="bar", ax=ax_coef, color=["green", "gray", "red"], width=0.6)
+    ax_coef.set_ylabel("Coefficient", fontsize=8)
+    ax_coef.tick_params(axis='x', labelsize=8)
+    ax_coef.tick_params(axis='y', labelsize=8)
+    ax_coef.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
+    st.pyplot(fig_coef)
