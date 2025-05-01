@@ -100,13 +100,21 @@ with tab2:
     st.dataframe(filtered_df, use_container_width=True, height=400)
 
 with tab3:
-    st.header("\U0001F52C Factor Model: Explaining S&P 500 Returns")
+    st.header("\U0001F52C Factor Model: Estimating Factor Loadings via Regression")
 
-    st.markdown("This model estimates how weekly returns of the S&P 500 are influenced by investor sentiment.")
+    st.markdown("""
+    This model estimates how weekly S&P 500 returns respond to observable sentiment factors.
+    We apply a classical regression-based calibration as described in the factor model literature.
+
+    **Model:**
+    \[ R_t = \alpha + \beta_1 \cdot \text{Bullish}_t + \beta_2 \cdot \text{Bearish}_t + \varepsilon_t \]
+
+    In matrix form:
+    \[ X = F B + E, \quad \hat{B} = (F^\top F)^{-1} F^\top X \]
+    """)
 
     reg_data = filtered_df[["Bullish", "Bearish", "SP500_Return"]].dropna()
-
-    X = reg_data[["Bullish", "Bearish"]]  # Drop Neutral to avoid multicollinearity
+    X = reg_data[["Bullish", "Bearish"]]
     X = sm.add_constant(X)
     y = reg_data["SP500_Return"]
 
@@ -115,7 +123,7 @@ with tab3:
     st.markdown("### Regression Summary")
     st.text(model.summary())
 
-    st.markdown("### Factor Coefficients")
+    st.markdown("### Estimated Factor Loadings (\u03B2)")
     fig_coef, ax = plt.subplots(figsize=(6, 2))
     model.params[1:].plot(kind="bar", ax=ax, color=["green", "red"], width=0.6)
     ax.set_ylabel("Coefficient", fontsize=8)
@@ -124,3 +132,6 @@ with tab3:
     ax.tick_params(axis='y', labelsize=8)
     ax.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
     st.pyplot(fig_coef)
+
+    st.markdown(f"**R² (Explained Variance)**: {model.rsquared:.3f}")
+    st.markdown("The R² value indicates the portion of return variance explained by sentiment factors (systematic risk). Remaining variation is attributed to residual (idiosyncratic) noise.")
