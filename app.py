@@ -40,8 +40,10 @@ tab1, tab2, tab3 = st.tabs([
 with tab1:
     st.header("🗂 Raw AAII Sentiment Excel File")
     st.dataframe(raw_df)
+ontainer_width=True, height=400)
 
-# --- Tab 2: S&P + Sentiment Charts + MA Option + Checkbox Control ---
+
+# --- Tab 2: S&P + Sentiment Charts + MA + Checkbox Icons ---
 with tab2:
     st.header("📆 Select Time Range for Analysis")
 
@@ -72,13 +74,13 @@ with tab2:
     ax1.grid(True, linestyle="--", linewidth=0.5)
     st.pyplot(fig1)
 
-    # --- Chart 2: Sentiment with checkboxes ---
-    st.markdown("##### 🧠 Investor Sentiment (Toggle View)")
+    # --- Chart 2: Sentiment with checkbox controls and emojis ---
+    st.markdown("##### 🧠 Investor Sentiment (Select Lines)")
 
     col1, col2, col3 = st.columns(3)
-    show_bullish = col1.checkbox("Show Bullish", value=True)
-    show_neutral = col2.checkbox("Show Neutral", value=True)
-    show_bearish = col3.checkbox("Show Bearish", value=True)
+    show_bullish = col1.checkbox("🐂 Bullish", value=True)
+    show_neutral = col2.checkbox("😐 Neutral", value=True)
+    show_bearish = col3.checkbox("🐻 Bearish", value=True)
 
     fig2, ax2 = plt.subplots(figsize=(10, 2.5))
     if show_bullish:
@@ -92,8 +94,9 @@ with tab2:
     ax2.grid(True, linestyle="--", linewidth=0.5)
     st.pyplot(fig2)
 
-    # --- Moving Average Sentiment ---
+    # --- Chart 3: Bullish MA + Price ---
     st.markdown("##### 📈 Bullish Sentiment Moving Average")
+
     ma_window = st.slider("Select MA Window (weeks):", 1, 52, 4, key="tab2_ma")
 
     df_ma = filtered_df.copy()
@@ -102,7 +105,7 @@ with tab2:
     fig3, ax3 = plt.subplots(figsize=(10, 2.5))
     ax3.plot(df_ma["Date"], df_ma["SP500_Close"], color="black", label="S&P 500")
     ax4 = ax3.twinx()
-    ax4.plot(df_ma["Date"], df_ma["Bullish_MA"], color="green", label=f"Bullish Sentiment ({ma_window}-Week MA)")
+    ax4.plot(df_ma["Date"], df_ma["Bullish_MA"], color="green", label=f"Bullish ({ma_window}-W MA)")
     ax3.set_ylabel("S&P 500 Price", color="black")
     ax4.set_ylabel("Bullish Sentiment (%)", color="green")
     fig3.suptitle(f"S&P 500 vs. Bullish Sentiment ({ma_window}-Week MA)", fontsize=12)
