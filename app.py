@@ -28,19 +28,20 @@ def load_data():
     df = df.sort_values("Date").reset_index(drop=True)
     df[["Bullish", "Neutral", "Bearish"]] = df[["Bullish", "Neutral", "Bearish"]] * 100
     df["SP500_Return"] = df["SP500_Close"].pct_change() * 100
+
     return df.dropna()
 
-# Load data
+# --- Load ---
 df = load_data()
 
 # --- Sidebar ---
 st.sidebar.header("AAII Sentiment Dashboard")
 st.sidebar.markdown("Data source: [AAII](https://www.aaii.com/sentimentsurvey)")
 
-# --- Main title ---
+# --- Title ---
 st.title("📊 Market Sentiment & S&P 500 Risk Model")
 
-# --- Line charts ---
+# --- Line Charts ---
 col1, col2 = st.columns(2)
 
 with col1:
@@ -51,22 +52,28 @@ with col2:
     st.subheader("S&P 500 Weekly Returns (%)")
     st.line_chart(df.set_index("Date")["SP500_Return"])
 
-# --- Factor model ---
+# --- Factor Model ---
 st.subheader("Factor Model: Explaining S&P 500 Returns Using Sentiment")
 
-X = df[["Bullish", "Neutral", "Bearish"]]
+# Prepare complete data for regression
+reg_data = df[["Bullish", "Neutral", "Bearish", "SP500_Return"]].dropna()
+
+X = reg_data[["Bullish", "Neutral", "Bearish"]]
 X = sm.add_constant(X)
-y = df["SP500_Return"]
+y = reg_data["SP500_Return"]
+
+# Fit model
 model = sm.OLS(y, X).fit()
 
+# --- Output ---
 st.markdown("### Regression Summary")
 st.text(model.summary())
 
-# --- Bar plot of coefficients ---
+# --- Plot Coefficients ---
 st.subheader("Sentiment Factor Coefficients")
 
 fig, ax = plt.subplots()
-model.params[1:].plot(kind="bar", ax=ax)  # Exclude intercept
+model.params[1:].plot(kind="bar", ax=ax)  # skip intercept
 ax.set_ylabel("Coefficient")
 ax.set_title("Impact of Sentiment on S&P 500 Returns")
 st.pyplot(fig)
