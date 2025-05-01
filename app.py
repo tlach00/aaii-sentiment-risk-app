@@ -87,21 +87,29 @@ with tab2:
     st.subheader("📋 Filtered Data Table")
     st.dataframe(filtered_df, use_container_width=True, height=400)
 
-# --- Tab 3: Normalized Overlay Plot ---
+# --- Tab 3: Sentiment-Based Index vs S&P 500 ---
 with tab3:
-    st.header("📊 Normalized S&P 500 and Bullish Sentiment")
+    st.header("📊 S&P 500 vs. Sentiment-Based Index")
 
-    df_norm = filtered_df.copy()
-    scaler = MinMaxScaler()
-    df_norm[["Norm_SP500", "Norm_Bullish"]] = scaler.fit_transform(
-        df_norm[["SP500_Close", "Bullish"]]
-    )
+    df_index = filtered_df.copy().reset_index(drop=True)
 
+    # Build "Sentiment Index" (starts at 100)
+    sentiment_index = [100]
+    scaling_factor = 0.1  # Adjust to tune volatility
+
+    for i in range(1, len(df_index)):
+        change = (df_index.loc[i, "Bullish"] - 0.5) * scaling_factor
+        new_value = sentiment_index[-1] * (1 + change)
+        sentiment_index.append(new_value)
+
+    df_index["Sentiment_Index"] = sentiment_index
+
+    # Plot both as real-looking indices
     fig3, ax3 = plt.subplots(figsize=(10, 3))
-    ax3.plot(df_norm["Date"], df_norm["Norm_SP500"], label="S&P 500", color="black")
-    ax3.plot(df_norm["Date"], df_norm["Norm_Bullish"], label="Bullish Sentiment", color="green")
-    ax3.set_ylabel("Normalized (0–1)")
-    ax3.set_title("Normalized Price vs Sentiment", fontsize=14)
+    ax3.plot(df_index["Date"], df_index["SP500_Close"], label="S&P 500", color="black")
+    ax3.plot(df_index["Date"], df_index["Sentiment_Index"], label="Sentiment Index", color="green")
+    ax3.set_ylabel("Index Value")
+    ax3.set_title("S&P 500 vs. Bullish Sentiment Index", fontsize=14)
     ax3.legend()
     ax3.grid(True, linestyle="--", linewidth=0.5)
     st.pyplot(fig3)
