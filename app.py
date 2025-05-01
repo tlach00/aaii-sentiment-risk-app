@@ -9,15 +9,30 @@ st.set_page_config(page_title="AAII Sentiment Risk App", layout="wide")
 # --- Load Data ---
 @st.cache_data
 def load_data():
-    df = pd.read_excel("sentiment_data.xlsx")
-    df["Date"] = pd.to_datetime(df["Date"])
+    df = pd.read_excel("sentiment_data.xlsx", skiprows=3)
+
+    # Rename the first columns to match our needs
+    df = df.rename(columns={
+        df.columns[0]: "Date",
+        df.columns[1]: "Bullish",
+        df.columns[2]: "Neutral",
+        df.columns[3]: "Bearish",
+        df.columns[-1]: "SP500_Close"  # assumes last column is weekly close
+    })
+
+    # Drop rows where Date or key values are missing
     df = df.dropna(subset=["Date", "Bullish", "Neutral", "Bearish", "SP500_Close"])
+
+    # Remove any non-date rows (e.g., "Avg", "STD", etc.)
+    df = df[df["Date"].apply(lambda x: isinstance(x, pd.Timestamp))]
+
+    # Sort and process
     df = df.sort_values("Date").reset_index(drop=True)
-    df[["Bullish", "Neutral", "Bearish"]] *= 100
+    df[["Bullish", "Neutral", "Bearish"]] = df[["Bullish", "Neutral", "Bearish"]] * 100
     df["SP500_Return"] = df["SP500_Close"].pct_change() * 100
+
     return df.dropna()
 
-df = load_data()
 
 # --- Sidebar ---
 st.sidebar.header("AAII Sentiment Dashboard")
