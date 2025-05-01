@@ -4,3 +4,4 @@ matplotlib
 streamlit
 openpyxl
 statsmodels
+scikit-learn
