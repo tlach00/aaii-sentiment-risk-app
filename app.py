@@ -87,30 +87,33 @@ with tab2:
     st.subheader("📋 Filtered Data Table")
     st.dataframe(filtered_df, use_container_width=True, height=400)
 
-# --- Tab 3: S&P 500 vs Bullish Sentiment (Smoothed) ---
+# --- Tab 3: S&P 500 vs Bullish Sentiment (User-controlled MA) ---
 with tab3:
     st.header("📊 S&P 500 vs. Smoothed Bullish Sentiment (%)")
 
-    # Smooth sentiment with 4-week moving average
+    # User slider for MA window
+    ma_window = st.slider("Select Moving Average Window (weeks):", min_value=1, max_value=12, value=4)
+
+    # Apply MA
     df_ma = filtered_df.copy()
-    df_ma["Bullish_MA"] = df_ma["Bullish"].rolling(window=4, min_periods=1).mean()
+    df_ma["Bullish_MA"] = df_ma["Bullish"].rolling(window=ma_window, min_periods=1).mean()
 
     # Plot
     fig3, ax1 = plt.subplots(figsize=(10, 3))
 
-    # S&P 500 (left y-axis)
+    # Left y-axis: S&P 500
     ax1.plot(df_ma["Date"], df_ma["SP500_Close"], color="black", label="S&P 500")
     ax1.set_ylabel("S&P 500 Price", color="black")
     ax1.tick_params(axis='y', labelcolor="black")
 
-    # Bullish sentiment MA (right y-axis)
+    # Right y-axis: Bullish sentiment MA
     ax2 = ax1.twinx()
-    ax2.plot(df_ma["Date"], df_ma["Bullish_MA"], color="green", label="Bullish Sentiment (MA)")
+    ax2.plot(df_ma["Date"], df_ma["Bullish_MA"], color="green", label=f"Bullish Sentiment ({ma_window}-Week MA)")
     ax2.set_ylabel("Bullish Sentiment (%)", color="green")
     ax2.tick_params(axis='y', labelcolor="green")
 
     # Title and grid
-    fig3.suptitle("S&P 500 vs. Bullish Sentiment (4-Week MA)", fontsize=14)
+    fig3.suptitle(f"S&P 500 vs. Bullish Sentiment ({ma_window}-Week MA)", fontsize=14)
     ax1.grid(True, linestyle="--", linewidth=0.5)
 
     # Combined legend
