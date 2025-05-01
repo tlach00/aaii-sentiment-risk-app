@@ -152,9 +152,10 @@ with tab3:
     ax.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
     st.pyplot(fig_coef)
 
-    st.markdown("""
+   r2 = model.rsquared
+    st.markdown(f"""
     **Model Insight**  
-    - **Bullish β₁** = {:.2f}: Expected return change per 1% bullish sentiment  
-    - **Bearish β₂** = {:.2f}  
-    - **R²** = {:.2%} of return variance explained
-    """.format(model.params['Bullish'], model.params['Bearish'], model.rsquared))
+    - **Bullish β₁** = {model.params['Bullish']:.2f}: Expected return change per 1% bullish sentiment  
+    - **Bearish β₂** = {model.params['Bearish']:.2f}  
+    - **R²** = {r2:.2%} of return variance explained
+    """)
