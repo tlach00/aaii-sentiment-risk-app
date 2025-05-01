@@ -119,6 +119,8 @@ with tab3:
     y = reg_data["SP500_Return"]
 
     model = sm.OLS(y, X).fit()
+    predicted = model.predict(X)
+    residuals = y - predicted
 
     st.markdown("### Regression Summary")
     st.text(model.summary())
@@ -135,3 +137,29 @@ with tab3:
 
     st.markdown(f"**R² (Explained Variance)**: {model.rsquared:.3f}")
     st.markdown("The R² value indicates the portion of return variance explained by sentiment factors (systematic risk). Remaining variation is attributed to residual (idiosyncratic) noise.")
+
+    st.markdown("### Actual vs Predicted Returns")
+    fig_pred, ax_pred = plt.subplots(figsize=(10, 3))
+    ax_pred.plot(reg_data.index, y, label="Actual", color="black", linewidth=0.7)
+    ax_pred.plot(reg_data.index, predicted, label="Predicted", color="orange", linewidth=0.7, linestyle="--")
+    ax_pred.set_ylabel("Weekly Return (%)", fontsize=8)
+    ax_pred.set_title("Actual vs Predicted S&P 500 Weekly Returns", fontsize=10)
+    ax_pred.legend(fontsize=8)
+    ax_pred.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
+    st.pyplot(fig_pred)
+
+    st.markdown("### Distribution of Residuals")
+    fig_resid, ax_resid = plt.subplots(figsize=(6, 2))
+    ax_resid.hist(residuals, bins=50, color='gray', edgecolor='black')
+    ax_resid.set_title("Distribution of Residuals", fontsize=9)
+    ax_resid.set_xlabel("Residual (%)")
+    st.pyplot(fig_resid)
+
+    st.markdown(f"""
+    **Model Insight**  
+    - **Bullish sentiment effect**: β₁ = {model.params['Bullish']:.2f} → Every 1% increase in bullish sentiment is associated with a {model.params['Bullish']:.2f}% change in S&P 500 weekly return.  
+    - **Bearish sentiment effect**: β₂ = {model.params['Bearish']:.2f}  
+    - **R²**: {model.rsquared:.2%} of return variance is explained by sentiment.
+    """)
+
+
