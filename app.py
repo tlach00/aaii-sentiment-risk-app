@@ -87,31 +87,31 @@ with tab2:
     st.subheader("📋 Filtered Data Table")
     st.dataframe(filtered_df, use_container_width=True, height=400)
 
-# --- Tab 3: Sentiment-Based Index vs S&P 500 ---
+# --- Tab 3: Dual Y-Axis - S&P 500 vs Sentiment (%) ---
 with tab3:
-    st.header("📊 S&P 500 vs. Sentiment-Based Index")
+    st.header("📊 S&P 500 vs. Bullish Sentiment (%)")
 
-    df_index = filtered_df.copy().reset_index(drop=True)
+    fig3, ax1 = plt.subplots(figsize=(10, 3))
 
-    # Build "Sentiment Index" (starts at 100)
-    sentiment_index = [100]
-    scaling_factor = 0.1  # Adjust to tune volatility
+    # Plot S&P 500 (left y-axis)
+    ax1.plot(filtered_df["Date"], filtered_df["SP500_Close"], color="black", label="S&P 500")
+    ax1.set_ylabel("S&P 500 Price", color="black")
+    ax1.tick_params(axis='y', labelcolor="black")
 
-    for i in range(1, len(df_index)):
-        change = (df_index.loc[i, "Bullish"] - 0.5) * scaling_factor
-        new_value = sentiment_index[-1] * (1 + change)
-        sentiment_index.append(new_value)
+    # Create a second y-axis
+    ax2 = ax1.twinx()
+    ax2.plot(filtered_df["Date"], filtered_df["Bullish"], color="green", label="Bullish Sentiment (%)")
+    ax2.set_ylabel("Bullish Sentiment (%)", color="green")
+    ax2.tick_params(axis='y', labelcolor="green")
 
-    df_index["Sentiment_Index"] = sentiment_index
+    # Title and grid
+    fig3.suptitle("S&P 500 vs. Bullish Sentiment", fontsize=14)
+    ax1.grid(True, linestyle="--", linewidth=0.5)
 
-    # Plot both as real-looking indices
-    fig3, ax3 = plt.subplots(figsize=(10, 3))
-    ax3.plot(df_index["Date"], df_index["SP500_Close"], label="S&P 500", color="black")
-    ax3.plot(df_index["Date"], df_index["Sentiment_Index"], label="Sentiment Index", color="green")
-    ax3.set_ylabel("Index Value")
-    ax3.set_title("S&P 500 vs. Bullish Sentiment Index", fontsize=14)
-    ax3.legend()
-    ax3.grid(True, linestyle="--", linewidth=0.5)
+    # Combine legends from both axes
+    lines, labels = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines + lines2, labels + labels2, loc="upper left")
+
     st.pyplot(fig3)
-    
 
