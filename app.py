@@ -87,12 +87,12 @@ with tab2:
     st.subheader("📋 Filtered Data Table")
     st.dataframe(filtered_df, use_container_width=True, height=400)
 
-# --- Tab 3: S&P 500 vs Bullish Sentiment (User-controlled MA) ---
+# --- Tab 3: S&P 500 vs Bullish Sentiment (1-Year MA Option) ---
 with tab3:
     st.header("📊 S&P 500 vs. Smoothed Bullish Sentiment (%)")
 
-    # User slider for MA window
-    ma_window = st.slider("Select Moving Average Window (weeks):", min_value=1, max_value=12, value=4)
+    # User slider for MA window (1 to 52 weeks)
+    ma_window = st.slider("Select Moving Average Window (weeks):", min_value=1, max_value=52, value=4)
 
     # Apply MA
     df_ma = filtered_df.copy()
