@@ -104,9 +104,9 @@ with tab3:
 
     st.markdown("This model estimates how weekly returns of the S&P 500 are influenced by investor sentiment.")
 
-    reg_data = filtered_df[["Bullish", "Neutral", "Bearish", "SP500_Return"]].dropna()
+    reg_data = filtered_df[["Bullish", "Bearish", "SP500_Return"]].dropna()
 
-    X = reg_data[["Bullish", "Neutral", "Bearish"]]
+    X = reg_data[["Bullish", "Bearish"]]  # Drop Neutral to avoid multicollinearity
     X = sm.add_constant(X)
     y = reg_data["SP500_Return"]
 
@@ -116,10 +116,11 @@ with tab3:
     st.text(model.summary())
 
     st.markdown("### Factor Coefficients")
-    fig_coef, ax_coef = plt.subplots(figsize=(6, 2))
-    model.params[1:].plot(kind="bar", ax=ax_coef, color=["green", "gray", "red"], width=0.6)
-    ax_coef.set_ylabel("Coefficient", fontsize=8)
-    ax_coef.tick_params(axis='x', labelsize=8)
-    ax_coef.tick_params(axis='y', labelsize=8)
-    ax_coef.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
+    fig_coef, ax = plt.subplots(figsize=(6, 2))
+    model.params[1:].plot(kind="bar", ax=ax, color=["green", "red"], width=0.6)
+    ax.set_ylabel("Coefficient", fontsize=8)
+    ax.set_ylim(-10, 10)
+    ax.tick_params(axis='x', labelsize=8)
+    ax.tick_params(axis='y', labelsize=8)
+    ax.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
     st.pyplot(fig_coef)
