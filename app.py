@@ -33,17 +33,15 @@ clean_df = load_clean_data()
 tab1, tab2, tab3 = st.tabs([
     "🗂 Raw Excel Viewer",
     "📈 Interactive Dashboard",
-    "📊 Normalized Comparison"
+    "📊 Smoothed Sentiment vs S&P"
 ])
 
 # --- Tab 1: Raw File Viewer ---
 with tab1:
     st.header("🗂 Raw AAII Sentiment Excel File")
     st.dataframe(raw_df)
-ontainer_width=True, height=400)
 
-
-# --- Tab 2: S&P + Sentiment Charts + MA + Checkbox Icons ---
+# --- Tab 2: Interactive Charts + MA + Checkboxes ---
 with tab2:
     st.header("📆 Select Time Range for Analysis")
 
@@ -74,8 +72,8 @@ with tab2:
     ax1.grid(True, linestyle="--", linewidth=0.5)
     st.pyplot(fig1)
 
-    # --- Chart 2: Sentiment with checkbox controls and emojis ---
-    st.markdown("##### 🧠 Investor Sentiment (Select Lines)")
+    # --- Chart 2: Sentiment with emojis + checkboxes ---
+    st.markdown("##### 🧠 Investor Sentiment (Toggle Lines)")
 
     col1, col2, col3 = st.columns(3)
     show_bullish = col1.checkbox("🐂 Bullish", value=True)
@@ -94,9 +92,8 @@ with tab2:
     ax2.grid(True, linestyle="--", linewidth=0.5)
     st.pyplot(fig2)
 
-    # --- Chart 3: Bullish MA + Price ---
+    # --- Chart 3: Moving Average of Bullish Sentiment ---
     st.markdown("##### 📈 Bullish Sentiment Moving Average")
-
     ma_window = st.slider("Select MA Window (weeks):", 1, 52, 4, key="tab2_ma")
 
     df_ma = filtered_df.copy()
@@ -111,7 +108,6 @@ with tab2:
     fig3.suptitle(f"S&P 500 vs. Bullish Sentiment ({ma_window}-Week MA)", fontsize=12)
     ax3.grid(True, linestyle="--", linewidth=0.5)
 
-    # Combine legends
     lines1, labels1 = ax3.get_legend_handles_labels()
     lines2, labels2 = ax4.get_legend_handles_labels()
     ax3.legend(lines1 + lines2, labels1 + labels2, loc="upper left")
@@ -121,3 +117,31 @@ with tab2:
     # --- Table ---
     st.subheader("📋 Filtered Data Table")
     st.dataframe(filtered_df, use_container_width=True, height=400)
+
+# --- Tab 3: Dual Y-Axis — S&P 500 vs Smoothed Sentiment ---
+with tab3:
+    st.header("📊 S&P 500 vs. Smoothed Bullish Sentiment (%)")
+
+    ma_window = st.slider("Select Moving Average Window (weeks):", 1, 52, 4, key="tab3_ma")
+
+    df_ma = filtered_df.copy()
+    df_ma["Bullish_MA"] = df_ma["Bullish"].rolling(window=ma_window, min_periods=1).mean()
+
+    fig3, ax1 = plt.subplots(figsize=(10, 3))
+    ax1.plot(df_ma["Date"], df_ma["SP500_Close"], color="black", label="S&P 500")
+    ax1.set_ylabel("S&P 500 Price", color="black")
+    ax1.tick_params(axis='y', labelcolor="black")
+
+    ax2 = ax1.twinx()
+    ax2.plot(df_ma["Date"], df_ma["Bullish_MA"], color="green", label=f"🐂 Bullish ({ma_window}-W MA)")
+    ax2.set_ylabel("Bullish Sentiment (%)", color="green")
+    ax2.tick_params(axis='y', labelcolor="green")
+
+    fig3.suptitle(f"S&P 500 vs. Bullish Sentiment ({ma_window}-Week MA)", fontsize=14)
+    ax1.grid(True, linestyle="--", linewidth=0.5)
+
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines1 + lines2, labels1 + labels2, loc="upper left")
+
+    st.pyplot(fig3)
