@@ -113,7 +113,8 @@ with tab3:
     \[ X = F B + E, \quad \hat{B} = (F^\top F)^{-1} F^\top X \]
     """)
 
-    reg_data = filtered_df[["Bullish", "Bearish", "SP500_Return"]].dropna()
+    reg_data = filtered_df[["Date", "Bullish", "Bearish", "SP500_Return"]].dropna()
+    reg_data = reg_data.set_index("Date")
     X = reg_data[["Bullish", "Bearish"]]
     X = sm.add_constant(X)
     y = reg_data["SP500_Return"]
@@ -141,10 +142,11 @@ with tab3:
     st.markdown("### Actual vs Predicted Returns")
     fig_pred, ax_pred = plt.subplots(figsize=(10, 3))
     ax_pred.plot(reg_data.index, y, label="Actual", color="black", linewidth=0.7)
-    ax_pred.plot(reg_data.index, predicted, label="Predicted", color="orange", linewidth=0.7, linestyle="--")
+    ax_pred.plot(reg_data.index, predicted, label="Predicted", color="orange", linewidth=1.2, linestyle="--")
     ax_pred.set_ylabel("Weekly Return (%)", fontsize=8)
     ax_pred.set_title("Actual vs Predicted S&P 500 Weekly Returns", fontsize=10)
     ax_pred.legend(fontsize=8)
+    ax_pred.tick_params(axis='both', labelsize=7)
     ax_pred.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
     st.pyplot(fig_pred)
 
@@ -153,6 +155,7 @@ with tab3:
     ax_resid.hist(residuals, bins=50, color='gray', edgecolor='black')
     ax_resid.set_title("Distribution of Residuals", fontsize=9)
     ax_resid.set_xlabel("Residual (%)")
+    ax_resid.tick_params(axis='both', labelsize=7)
     st.pyplot(fig_resid)
 
     st.markdown(f"""
@@ -161,5 +164,3 @@ with tab3:
     - **Bearish sentiment effect**: β₂ = {model.params['Bearish']:.2f}  
     - **R²**: {model.rsquared:.2%} of return variance is explained by sentiment.
     """)
-
-
