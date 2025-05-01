@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import datetime
+from sklearn.preprocessing import MinMaxScaler
 
 st.set_page_config(page_title="AAII Sentiment Risk App", layout="wide")
 
@@ -29,22 +30,24 @@ raw_df = load_raw_excel()
 clean_df = load_clean_data()
 
 # --- Tabs ---
-tab1, tab2 = st.tabs(["🗂 Raw Excel Viewer", "📈 Interactive Dashboard"])
+tab1, tab2, tab3 = st.tabs([
+    "🗂 Raw Excel Viewer",
+    "📈 Interactive Dashboard",
+    "📊 Normalized Comparison"
+])
 
 # --- Tab 1: Raw File Viewer ---
 with tab1:
     st.header("🗂 Raw AAII Sentiment Excel File")
     st.dataframe(raw_df)
 
-# --- Tab 2: Charts + Interactive Table ---
+# --- Tab 2: S&P + Sentiment Charts ---
 with tab2:
     st.header("📆 Select Time Range for Analysis")
 
-    # Set up proper date range
     min_date = clean_df["Date"].min().date()
     max_date = clean_df["Date"].max().date()
 
-    # Slider input
     start_date, end_date = st.slider(
         "Select a date range:",
         min_value=min_date,
@@ -53,14 +56,11 @@ with tab2:
         format="YYYY-MM-DD"
     )
 
-    # Convert slider output back to Timestamp
     start_date = pd.to_datetime(start_date)
     end_date = pd.to_datetime(end_date)
 
-    # Filter data
     filtered_df = clean_df[(clean_df["Date"] >= start_date) & (clean_df["Date"] <= end_date)]
 
-    # --- Chart 1: S&P 500 ---
     st.subheader("📉 S&P 500 Weekly Close (Log Scale)")
     fig1, ax1 = plt.subplots(figsize=(10, 3))
     ax1.plot(filtered_df["Date"], filtered_df["SP500_Close"], color="black")
@@ -70,7 +70,6 @@ with tab2:
     ax1.grid(True, linestyle="--", linewidth=0.5)
     st.pyplot(fig1)
 
-    # --- Chart 2: Sentiment ---
     st.subheader("🧠 AAII Sentiment Over Time")
     fig2, ax2 = plt.subplots(figsize=(10, 3))
     ax2.plot(filtered_df["Date"], filtered_df["Bullish"], label="Bullish", color="green")
@@ -82,6 +81,27 @@ with tab2:
     ax2.grid(True, linestyle="--", linewidth=0.5)
     st.pyplot(fig2)
 
-    # --- Table ---
     st.subheader("📋 Filtered Data Table")
     st.dataframe(filtered_df, use_container_width=True, height=400)
+
+# --- Tab 3: Normalized Overlay Plot ---
+with tab3:
+    st.header("📊 Normalized S&P 500 and Bullish Sentiment")
+
+    # Reuse filtered_df
+    df_norm = filtered_df.copy()
+
+    # Normalize both series from 0 to 1
+    scaler = MinMaxScaler()
+    df_norm[["Norm_SP500", "Norm_Bullish"]] = scaler.fit_transform(
+        df_norm[["SP500_Close", "Bullish"]]
+    )
+
+    fig3, ax3 = plt.subplots(figsize=(10, 3))
+    ax3.plot(df_norm["Date"], df_norm["Norm_SP500"], label="S&P 500", color="black")
+    ax3.plot(df_norm["Date"], df_norm["Norm_Bullish"], label="Bullish Sentiment", color="green")
+    ax3.set_ylabel("Normalized (0-1)")
+    ax3.set_title("Normalized Price vs Sentiment", fontsize=14)
+    ax3.legend()
+    ax3.grid(True, linestyle="--", linewidth=0.5)
+    st.pyplot(fig3)
