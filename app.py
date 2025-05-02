@@ -445,7 +445,8 @@ with tab7:
     else:
         q_return, bh_return = 0.0, 0.0
 
-    st.subheader("Performance Summary")    st.markdown(f"""
+    st.subheader("Performance Summary")    
+    st.markdown(f"""
     - **Deep Q-Learning Strategy Return**: {q_return:.2f}%  
     - **Buy & Hold Return**: {bh_return:.2f}%
     """)
