@@ -36,47 +36,79 @@ with tab1:
 
 # ---------------------------- TAB 2 ----------------------------------
 with tab2:
-    st.header(":calendar: Time Range Selection")
+    st.markdown("## :chart_with_upwards_trend: Interactive Dashboard")
 
     min_date = clean_df["Date"].min().date()
     max_date = clean_df["Date"].max().date()
-    start_date, end_date = st.slider("Select a date range:", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="YYYY-MM-DD")
+
+    start_date, end_date = st.slider(
+        "Select a date range:",
+        min_value=min_date,
+        max_value=max_date,
+        value=(min_date, max_date),
+        format="YYYY-MM-DD"
+    )
+
     start_date = pd.to_datetime(start_date)
     end_date = pd.to_datetime(end_date)
     filtered_df = clean_df[(clean_df["Date"] >= start_date) & (clean_df["Date"] <= end_date)]
 
-    # Chart 1: S&P 500 log price (Altair)
-    st.subheader(":label: S&P 500 Weekly Close (Log Scale)")
-    log_chart = alt.Chart(filtered_df).mark_line(color="black").encode(
-        x="Date:T",
-        y=alt.Y("SP500_Close:Q", scale=alt.Scale(type="log"), title="Price"),
-        tooltip=["Date:T", "SP500_Close"]
-    ).properties(width=800, height=300).interactive()
-    st.altair_chart(log_chart, use_container_width=True)
+    # S&P 500 Chart
+    st.markdown("### :newspaper: S&P 500 Weekly Close (Log Scale)")
+    chart1 = alt.Chart(filtered_df).mark_line(color='black').encode(
+        x=alt.X('Date:T', title='Date'),
+        y=alt.Y('SP500_Close:Q', scale=alt.Scale(type='log'), title='Price')
+    ).properties(
+        height=300
+    )
+    st.altair_chart(chart1, use_container_width=True)
 
-    # Chart 2: Sentiment lines (Altair)
-    st.subheader(":brain: Investor Sentiment (Toggle Lines)")
+    # Sentiment Toggle
+    st.markdown("### 🧠 Investor Sentiment (Toggle Lines)")
+    col1, col2, col3 = st.columns(3)
+    show_bullish = col1.checkbox("🐂 Bullish", value=True)
+    show_neutral = col2.checkbox("≡ Neutral", value=True)
+    show_bearish = col3.checkbox("🐻 Bearish", value=True)
 
-    show_bullish = st.checkbox(":cow: Bullish", value=True)
-    show_neutral = st.checkbox("\u2261 Neutral", value=True)
-    show_bearish = st.checkbox(":bear: Bearish", value=True)
+    chart2 = alt.Chart(filtered_df).transform_fold(
+        ["Bullish", "Neutral", "Bearish"],
+        as_=["Sentiment", "Value"]
+    )
+    chart2 = chart2.mark_line().encode(
+        x='Date:T',
+        y=alt.Y('Value:Q', title='Sentiment (%)'),
+        color=alt.Color('Sentiment:N', scale=alt.Scale(domain=["Bullish", "Neutral", "Bearish"],
+                                                       range=["green", "gray", "red"]))
+    )
 
-    sentiment_long = filtered_df.melt(id_vars=["Date"], value_vars=["Bullish", "Neutral", "Bearish"], var_name="Sentiment", value_name="Value")
-    sentiment_long = sentiment_long[
-        ((sentiment_long["Sentiment"] == "Bullish") & show_bullish) |
-        ((sentiment_long["Sentiment"] == "Neutral") & show_neutral) |
-        ((sentiment_long["Sentiment"] == "Bearish") & show_bearish)
-    ]
+    filters = []
+    if show_bullish: filters.append("Bullish")
+    if show_neutral: filters.append("Neutral")
+    if show_bearish: filters.append("Bearish")
 
-    color_map = {"Bullish": "green", "Neutral": "gray", "Bearish": "red"}
-    sentiment_chart = alt.Chart(sentiment_long).mark_line().encode(
-        x="Date:T",
-        y=alt.Y("Value:Q", title="Sentiment (%)"),
-        color=alt.Color("Sentiment:N", scale=alt.Scale(domain=list(color_map.keys()), range=list(color_map.values()))),
-        tooltip=["Date:T", "Sentiment:N", "Value:Q"]
-    ).properties(width=800, height=300).interactive()
+    chart2 = chart2.transform_filter(alt.FieldOneOfPredicate(field='Sentiment', oneOf=filters))
 
-    st.altair_chart(sentiment_chart, use_container_width=True)
+    st.altair_chart(chart2, use_container_width=True)
+
+    # Superposed Bullish MA vs SP500
+    st.markdown("### :chart_with_upwards_trend: Bullish Sentiment Moving Average")
+    ma_window = st.slider("Select MA Window (weeks):", 1, 52, 4, key="tab2_ma")
+
+    df_ma = filtered_df.copy()
+    df_ma["Bullish_MA"] = df_ma["Bullish"].rolling(window=ma_window, min_periods=1).mean()
+
+    base = alt.Chart(df_ma).encode(x='Date:T')
+
+    chart3 = alt.layer(
+        base.mark_line(color='black').encode(y=alt.Y('SP500_Close:Q', title='S&P 500 Price')),
+        base.mark_line(color='green').encode(y=alt.Y('Bullish_MA:Q', title='Bullish Sentiment MA'))
+    ).resolve_scale(y='independent').properties(height=300)
+
+    st.altair_chart(chart3, use_container_width=True)
+
+    # Table
+    st.markdown("### :clipboard: Filtered Data Table")
+    st.dataframe(filtered_df, use_container_width=True, height=400)
 
 # ---------------------------- TAB 3 ----------------------------------
 with tab3:
