@@ -98,48 +98,44 @@ with tab2:
 
 # TAB 3 - Placeholder for future strategy implementation
 with tab3:
-    st.header("📈 Sentiment-Based Backtest Strategy")
+    st.header("📈 Sentiment-Based Backtest Strategy (Spread-Based)")
 
     st.sidebar.markdown("### Strategy Parameters")
-    bullish_threshold = st.sidebar.slider("Bullish Threshold (%)", 0.0, 100.0, 50.0, step=1.0)
-    bearish_threshold = st.sidebar.slider("Bearish Threshold (%)", 0.0, 100.0, 50.0, step=1.0)
+    spread_threshold = st.sidebar.slider("Bull-Bear Spread Threshold (%)", min_value=0.0, max_value=50.0, value=20.0, step=1.0)
     initial_capital = st.sidebar.number_input("Initial Capital ($)", min_value=1000, value=10000, step=1000)
 
     df = clean_df.copy()
     df = df.set_index("Date")
 
-    # Create signal: 1 = invest, 0 = cash
-    df["Signal"] = 0
-    df.loc[df["Bullish"] >= bullish_threshold / 100, "Signal"] = 1
-    df.loc[df["Bearish"] >= bearish_threshold / 100, "Signal"] = 0
+    # Calculate Bull-Bear Spread
+    df["Spread"] = df["Bullish"] - df["Bearish"]
 
-    # Shift signals to simulate decision at prior week
+    # Create signal based on spread
+    df["Signal"] = 0
+    df.loc[df["Spread"] >= spread_threshold, "Signal"] = 1  # Long when spread is high
+    df.loc[df["Spread"] <= -spread_threshold, "Signal"] = -1  # Short when spread is deeply negative
+
     df["Signal"] = df["Signal"].shift(1).fillna(0)
 
-    # Calculate strategy returns
-    df["Strategy_Return"] = df["Signal"] * df["SP500_Return"]
-    df["BuyHold_Return"] = df["SP500_Return"]
-
-    # Calculate cumulative capital over time
-    df["Strat_Value"] = initial_capital * (1 + df["Strategy_Return"] / 100).cumprod()
-    df["BH_Value"] = initial_capital * (1 + df["BuyHold_Return"] / 100).cumprod()
+    # Compute returns
+    df["Strategy_Return"] = df["SP500_Return"] * df["Signal"]
+    df["BuyHold"] = (1 + df["SP500_Return"] / 100).cumprod() * initial_capital
+    df["Strategy"] = (1 + df["Strategy_Return"] / 100).cumprod() * initial_capital
 
     # Plot cumulative returns
     st.markdown("### Cumulative Return")
     fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(df.index, df["BH_Value"], label="Buy & Hold", color="gray", linewidth=1.2)
-    ax.plot(df.index, df["Strat_Value"], label="Sentiment Strategy", color="green", linewidth=1.2)
-    ax.set_title("Cumulative Return", fontsize=12)
-    ax.set_ylabel("Portfolio Value ($)", fontsize=9)
-    ax.legend(fontsize=9)
-    ax.tick_params(axis="both", labelsize=8)
-    ax.grid(True, linestyle="--", linewidth=0.25, alpha=0.6)
+    ax.plot(df.index, df["BuyHold"], label="Buy & Hold", color="gray", linewidth=1.2)
+    ax.plot(df.index, df["Strategy"], label="Sentiment Spread Strategy", color="green", linewidth=1.2)
+    ax.set_ylabel("Portfolio Value ($)")
+    ax.legend()
+    ax.grid(True, linestyle="--", alpha=0.4)
     st.pyplot(fig)
 
-    # Display performance metrics
-    total_return_strategy = df["Strat_Value"].iloc[-1] / initial_capital - 1
-    total_return_bh = df["BH_Value"].iloc[-1] / initial_capital - 1
+    # Summary
+    st.subheader("Performance Summary")
+    strategy_return = df["Strategy"].iloc[-1] / initial_capital - 1
+    buy_hold_return = df["BuyHold"].iloc[-1] / initial_capital - 1
 
-    st.markdown("### Performance Summary")
-    st.write(f"**Strategy Return**: {total_return_strategy:.2%}")
-    st.write(f"**Buy & Hold Return**: {total_return_bh:.2%}")
+    st.write(f"**Strategy Return**: {strategy_return:.2%}")
+    st.write(f"**Buy & Hold Return**: {buy_hold_return:.2%}")
