@@ -1,9 +1,10 @@
+# app.py
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import datetime
 from sklearn.preprocessing import MinMaxScaler
-import statsmodels.api as sm
 
 st.set_page_config(page_title="AAII Sentiment Risk App", layout="wide")
 
@@ -27,16 +28,17 @@ def load_clean_data():
 raw_df = load_raw_excel()
 clean_df = load_clean_data()
 
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2 = st.tabs([
     "\U0001F5C2 Raw Excel Viewer",
-    "\U0001F4C8 Interactive Dashboard",
-    "\U0001F52C Factor Model"
+    "\U0001F4C8 Interactive Dashboard"
 ])
 
+# ---------------- TAB 1 ----------------
 with tab1:
     st.header("\U0001F5C2 Raw AAII Sentiment Excel File")
     st.dataframe(raw_df)
 
+# ---------------- TAB 2 ----------------
 with tab2:
     st.header("\U0001F4C6 Select Time Range for Analysis")
 
@@ -98,63 +100,3 @@ with tab2:
 
     st.subheader("\U0001F4CB Filtered Data Table")
     st.dataframe(filtered_df, use_container_width=True, height=400)
-
-with tab3:
-    st.header("\U0001F52C Factor Model: Estimating Factor Loadings via Regression")
-
-    reg_data = filtered_df[["Date", "Bullish", "Bearish", "SP500_Return"]].dropna()
-    reg_data = reg_data.set_index("Date")
-    X = reg_data[["Bullish", "Bearish"]]
-    X = sm.add_constant(X)
-    y = reg_data["SP500_Return"]
-
-    model = sm.OLS(y, X).fit()
-    predicted = model.predict(X)
-    residuals = y - predicted
-
-    st.markdown("""
-    ### Model Equation:
-    \[ R_t = \alpha + \beta_1 \cdot \text{Bullish}_t + \beta_2 \cdot \text{Bearish}_t + \varepsilon_t \]
-
-    ### Matrix Form:
-    \[ X = FB + E \Rightarrow \hat{B} = (F^\top F)^{-1} F^\top X \]
-
-    **R² (Explained Variance)**: {:.3f}  
-    The R² value indicates the portion of return variance explained by sentiment factors (systematic risk). Remaining variation is attributed to residual (idiosyncratic) noise.
-    """.format(model.rsquared))
-
-    st.markdown("### 1. Actual vs Predicted Returns")
-    fig_pred, ax_pred = plt.subplots(figsize=(12, 3))
-    ax_pred.plot(reg_data.index, y, label="Actual", color="black", linewidth=0.5)
-    ax_pred.plot(reg_data.index, predicted, label="Predicted", color="orange", linewidth=1.2, linestyle="--")
-    ax_pred.set_ylabel("Weekly Return (%)", fontsize=8)
-    ax_pred.set_title("Actual vs Predicted S&P 500 Weekly Returns", fontsize=10)
-    ax_pred.legend(fontsize=8)
-    ax_pred.tick_params(axis='both', labelsize=7)
-    ax_pred.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
-    st.pyplot(fig_pred)
-
-    st.markdown("### 2. Distribution of Residuals")
-    fig_resid, ax_resid = plt.subplots(figsize=(6, 2))
-    ax_resid.hist(residuals, bins=50, color='gray', edgecolor='black')
-    ax_resid.set_title("Distribution of Residuals", fontsize=9)
-    ax_resid.set_xlabel("Residual (%)")
-    ax_resid.tick_params(axis='both', labelsize=7)
-    st.pyplot(fig_resid)
-
-    st.markdown("### 3. Estimated Factor Loadings (\u03B2)")
-    fig_coef, ax = plt.subplots(figsize=(6, 2))
-    model.params[1:].plot(kind="bar", ax=ax, color=["green", "red"], width=0.6)
-    ax.set_ylabel("Coefficient", fontsize=8)
-    ax.set_ylim(-10, 10)
-    ax.tick_params(axis='x', labelsize=8)
-    ax.tick_params(axis='y', labelsize=8)
-    ax.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
-    st.pyplot(fig_coef)
-
-    st.markdown("""
-    **Model Insight**  
-    - **Bullish β₁** = {:.2f}: Expected return change per 1% bullish sentiment  
-    - **Bearish β₂** = {:.2f}  
-    - **R²** = {:.2%} of return variance explained
-    """.format(model.params['Bullish'], model.params['Bearish'], model.rsquared))
