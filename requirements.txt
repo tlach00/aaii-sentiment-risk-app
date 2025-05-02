@@ -5,3 +5,4 @@ streamlit
 openpyxl
 statsmodels
 scikit-learn
+torch
