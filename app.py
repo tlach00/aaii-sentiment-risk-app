@@ -1,82 +1,114 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import math
-from datetime import datetime
+import altair as alt
+import datetime
 
-st.set_page_config(
-    page_title="Sentiment Strategy Dashboard",
-    page_icon=":chart_with_upwards_trend:",
-    layout="wide"
-)
+st.set_page_config(page_title="AAII Sentiment Dashboard (Altair)", layout="wide")
 
-st.title(":chart_with_upwards_trend: Sentiment vs S&P 500 Strategy")
+st.title(":bar_chart: AAII Sentiment & S&P 500 Dashboard")
 
 @st.cache_data
 
-def load_data():
+def load_raw_excel():
+    return pd.read_excel("sentiment_data.xlsx", header=None)
+
+@st.cache_data
+
+def load_clean_data():
     df = pd.read_excel("sentiment_data.xlsx", skiprows=7, usecols="A:D,M", header=None)
     df.columns = ["Date", "Bullish", "Neutral", "Bearish", "SP500_Close"]
-    df = df.dropna()
+    df = df.dropna(subset=["Date", "Bullish", "Neutral", "Bearish", "SP500_Close"])
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df = df.set_index("Date").resample("D").ffill().dropna().copy()
-    df["SP500_Return"] = df["SP500_Close"].pct_change()
-    df["Sentiment"] = df["Bullish"]
+    df = df.dropna(subset=["Date"])
+    df = df.sort_values("Date")
+    df["SP500_Return"] = df["SP500_Close"].pct_change() * 100
     return df.dropna()
 
-df = load_data()
+raw_df = load_raw_excel()
+clean_df = load_clean_data()
 
-st.sidebar.header("Strategy Parameters")
-rolling_window = st.sidebar.slider("Rolling Window (days)", 5, 60, 20, step=5)
-initial_capital = st.sidebar.number_input("Initial Capital ($)", 1000, 1000000, 10000, step=1000)
+tab1, tab2, tab3 = st.tabs([":file_folder: Raw Excel Viewer", ":chart_with_upwards_trend: Interactive Dashboard", ":bar_chart: Sentiment Strategy"])
 
-# Compute rolling z-scores
-df["Z_Sentiment"] = (df["Sentiment"] - df["Sentiment"].rolling(window=rolling_window).mean()) / df["Sentiment"].rolling(window=rolling_window).std()
-df["Z_Price"] = (df["SP500_Close"] - df["SP500_Close"].rolling(window=rolling_window).mean()) / df["SP500_Close"].rolling(window=rolling_window).std()
+# ---------------------------- TAB 1 ----------------------------------
+with tab1:
+    st.header(":file_folder: Raw AAII Sentiment Excel File")
+    st.dataframe(raw_df)
 
-# Generate signals
-df["Signal"] = 0
-df.loc[df["Z_Sentiment"] > df["Z_Price"], "Signal"] = 1
-df.loc[df["Z_Sentiment"] < df["Z_Price"], "Signal"] = -1
-df["Position"] = df["Signal"].shift(1).fillna(0)
+# ---------------------------- TAB 2 ----------------------------------
+with tab2:
+    st.header(":calendar: Time Range Selection")
 
-# Returns
-df["Strategy_Return"] = df["SP500_Return"] * df["Position"]
-df = df.dropna()
-df["BuyHold"] = initial_capital * (1 + df["SP500_Return"]).cumprod()
-df["Strategy"] = initial_capital * (1 + df["Strategy_Return"]).cumprod()
+    min_date = clean_df["Date"].min().date()
+    max_date = clean_df["Date"].max().date()
+    start_date, end_date = st.slider("Select a date range:", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="YYYY-MM-DD")
+    start_date = pd.to_datetime(start_date)
+    end_date = pd.to_datetime(end_date)
+    filtered_df = clean_df[(clean_df["Date"] >= start_date) & (clean_df["Date"] <= end_date)]
 
-# Time range slider
-from_date, to_date = st.slider(
-    "Select date range",
-    min_value=df.index.min().date(),
-    max_value=df.index.max().date(),
-    value=(df.index.min().date(), df.index.max().date()),
-    format="YYYY-MM-DD"
-)
-df_filtered = df[(df.index.date >= from_date) & (df.index.date <= to_date)]
+    # Chart 1: S&P 500 log price (Altair)
+    st.subheader(":label: S&P 500 Weekly Close (Log Scale)")
+    log_chart = alt.Chart(filtered_df).mark_line(color="black").encode(
+        x="Date:T",
+        y=alt.Y("SP500_Close:Q", scale=alt.Scale(type="log"), title="Price"),
+        tooltip=["Date:T", "SP500_Close"]
+    ).properties(width=800, height=300).interactive()
+    st.altair_chart(log_chart, use_container_width=True)
 
-st.header("Portfolio Growth", divider="gray")
-st.line_chart(df_filtered[["Strategy", "BuyHold"]])
+    # Chart 2: Sentiment lines (Altair)
+    st.subheader(":brain: Investor Sentiment (Toggle Lines)")
 
-# Metrics block
-st.header(f"Performance Summary as of {to_date}", divider="gray")
-latest = df_filtered.iloc[-1]
-start = df_filtered.iloc[0]
+    show_bullish = st.checkbox(":cow: Bullish", value=True)
+    show_neutral = st.checkbox("\u2261 Neutral", value=True)
+    show_bearish = st.checkbox(":bear: Bearish", value=True)
 
-strat_return = latest["Strategy"] / start["Strategy"] - 1
-bh_return = latest["BuyHold"] / start["BuyHold"] - 1
+    sentiment_long = filtered_df.melt(id_vars=["Date"], value_vars=["Bullish", "Neutral", "Bearish"], var_name="Sentiment", value_name="Value")
+    sentiment_long = sentiment_long[
+        ((sentiment_long["Sentiment"] == "Bullish") & show_bullish) |
+        ((sentiment_long["Sentiment"] == "Neutral") & show_neutral) |
+        ((sentiment_long["Sentiment"] == "Bearish") & show_bearish)
+    ]
 
-cols = st.columns(2)
+    color_map = {"Bullish": "green", "Neutral": "gray", "Bearish": "red"}
+    sentiment_chart = alt.Chart(sentiment_long).mark_line().encode(
+        x="Date:T",
+        y=alt.Y("Value:Q", title="Sentiment (%)"),
+        color=alt.Color("Sentiment:N", scale=alt.Scale(domain=list(color_map.keys()), range=list(color_map.values()))),
+        tooltip=["Date:T", "Sentiment:N", "Value:Q"]
+    ).properties(width=800, height=300).interactive()
 
-with cols[0]:
-    st.metric("Strategy Return", f"{latest['Strategy']:,.0f} $", delta=f"{strat_return:.2%}")
+    st.altair_chart(sentiment_chart, use_container_width=True)
 
-with cols[1]:
-    st.metric("Buy & Hold Return", f"{latest['BuyHold']:,.0f} $", delta=f"{bh_return:.2%}")
+# ---------------------------- TAB 3 ----------------------------------
+with tab3:
+    st.header(":test_tube: Z-Score Strategy Backtest")
 
-st.header("Z-Score Inputs", divider="gray")
-st.line_chart(df_filtered[["Z_Sentiment", "Z_Price"]])
+    window = st.slider("Rolling Window (days)", min_value=5, max_value=60, value=15)
+    capital = st.number_input("Initial Capital ($)", value=10000)
 
-st.header("Signal Positioning", divider="gray")
-st.line_chart(df_filtered[["Position"]])
+    df = clean_df.copy().set_index("Date")
+    df["Z_bullish"] = (df["Bullish"] - df["Bullish"].rolling(window).mean()) / df["Bullish"].rolling(window).std()
+    df["Z_price"] = (df["SP500_Close"] - df["SP500_Close"].rolling(window).mean()) / df["SP500_Close"].rolling(window).std()
+    df.dropna(inplace=True)
+
+    df["Position"] = (df["Z_bullish"] > df["Z_price"]).astype(int) * 2 - 1
+    df["Strategy_Return"] = df["SP500_Return"] * df["Position"] / 100
+
+    df["BuyHold"] = (1 + df["SP500_Return"] / 100).cumprod() * capital
+    df["Strategy"] = (1 + df["Strategy_Return"]).cumprod() * capital
+
+    performance_chart = alt.Chart(df.reset_index()).transform_fold([
+        "BuyHold", "Strategy"]
+    ).mark_line().encode(
+        x="Date:T",
+        y=alt.Y("value:Q", title="Portfolio Value ($)"),
+        color=alt.Color("key:N", scale=alt.Scale(domain=["BuyHold", "Strategy"], range=["gray", "blue"])),
+        tooltip=["Date:T", "key:N", "value:Q"]
+    ).properties(title="Cumulative Return", width=800, height=300).interactive()
+
+    st.altair_chart(performance_chart, use_container_width=True)
+
+    st.markdown("**Performance Summary**")
+    strat_return = df["Strategy"].iloc[-1] / capital - 1
+    bh_return = df["BuyHold"].iloc[-1] / capital - 1
+    st.write(f"Strategy Return: {strat_return:.2%}")
+    st.write(f"Buy & Hold Return: {bh_return:.2%}")
