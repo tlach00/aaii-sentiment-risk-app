@@ -111,67 +111,49 @@ with tab2:
     st.dataframe(filtered_df, use_container_width=True, height=400)
 
 # ---------------------------- TAB 3 ----------------------------------
+
 with tab3:
     st.markdown("""
-        ## :bar_chart: Z-Score Strategy Backtest
+    ### 🧪 Z-Score Strategy Backtest
+    This strategy takes long or short positions based on Z-score comparisons between sentiment and price.
     """)
 
-    st.markdown("""Customize the strategy inputs:
-    """)
-
-    # --- Sidebar Parameters ---
     col1, col2 = st.columns(2)
-
     with col1:
-        z_window = st.slider("Rolling Window (days)", min_value=5, max_value=60, value=52)
-
+        z_window = st.slider("Rolling Window (days)", 5, 60, 15)
     with col2:
-        initial_capital = st.number_input("Initial Capital ($)", min_value=1000, value=10000, step=100)
+        initial_capital = st.number_input("Initial Capital ($)", value=10000)
 
-    # --- Prepare Data for Backtest ---
-    df_z = clean_df.copy()
-    df_z = df_z.set_index("Date")
-    df_z = df_z["1988":]  # S&P recovery post crash
+    z_df = clean_df.copy()
+    z_df["Bullish_Z"] = (z_df["Bullish"] - z_df["Bullish"].rolling(window=z_window).mean()) / z_df["Bullish"].rolling(window=z_window).std()
+    z_df["Price_Z"] = (z_df["SP500_Close"] - z_df["SP500_Close"].rolling(window=z_window).mean()) / z_df["SP500_Close"].rolling(window=z_window).std()
 
-    # --- Compute Z-scores ---
-    df_z["Bullish_Z"] = (df_z["Bullish"] - df_z["Bullish"].rolling(z_window).mean()) / df_z["Bullish"].rolling(z_window).std()
-    df_z["Price_Z"] = (df_z["SP500_Close"] - df_z["SP500_Close"].rolling(z_window).mean()) / df_z["SP500_Close"].rolling(z_window).std()
+    z_df = z_df.dropna().copy()
+    z_df["Position"] = (z_df["Bullish_Z"] > z_df["Price_Z"]).astype(int) * 2 - 1
+    z_df["Return"] = z_df["SP500_Return"] / 100
+    z_df["Strategy_Return"] = z_df["Return"] * z_df["Position"]
+    z_df["Strategy_Value"] = (1 + z_df["Strategy_Return"]).cumprod() * initial_capital
+    z_df["BuyHold_Value"] = (1 + z_df["Return"]).cumprod() * initial_capital
 
-    df_z.dropna(inplace=True)
+    base = alt.Chart(z_df).encode(x="Date:T")
 
-    # --- Strategy Logic ---
-    df_z["Position"] = 0
-    df_z.loc[df_z["Bullish_Z"] > df_z["Price_Z"], "Position"] = 1
-    df_z.loc[df_z["Bullish_Z"] < df_z["Price_Z"], "Position"] = -1
+    strat_line = base.mark_line(color="blue").encode(
+        y=alt.Y("Strategy_Value", title="Portfolio Value ($)"),
+        tooltip=["Date", "Strategy_Value"]
+    )
 
-    df_z["Return"] = df_z["SP500_Return"] / 100
-    df_z["Strategy_Return"] = df_z["Return"] * df_z["Position"]
+    hold_line = base.mark_line(color="gray").encode(
+        y="BuyHold_Value",
+        tooltip=["Date", "BuyHold_Value"]
+    )
 
-    # --- Cumulative Portfolio Value ---
-    df_z["BuyHold_Portfolio"] = (1 + df_z["Return"]).cumprod() * initial_capital
-    df_z["Strategy_Portfolio"] = (1 + df_z["Strategy_Return"]).cumprod() * initial_capital
+    st.altair_chart((strat_line + hold_line).properties(height=400), use_container_width=True)
 
-    # --- Plot ---
-    st.markdown("### Cumulative Return")
-    import altair as alt
-
-    df_plot = df_z.reset_index()[["Date", "BuyHold_Portfolio", "Strategy_Portfolio"]].melt("Date", var_name="Strategy", value_name="Value")
-    chart = alt.Chart(df_plot).mark_line().encode(
-        x="Date:T",
-        y=alt.Y("Value:Q", title="Portfolio Value ($)"),
-        color=alt.Color("Strategy", scale=alt.Scale(domain=["BuyHold_Portfolio", "Strategy_Portfolio"],
-                                                     range=["#6c6c6c", "#0070f3"]),
-                      legend=alt.Legend(title=None, labelExpr="replace(datum.label, '_Portfolio', '')"))
-    ).properties(height=350)
-    st.altair_chart(chart, use_container_width=True)
-
-    # --- Performance Summary ---
-    strat_ret = (df_z["Strategy_Portfolio"].iloc[-1] / initial_capital - 1) * 100
-    bh_ret = (df_z["BuyHold_Portfolio"].iloc[-1] / initial_capital - 1) * 100
+    strat_return = 100 * (z_df["Strategy_Value"].iloc[-1] / initial_capital - 1)
+    hold_return = 100 * (z_df["BuyHold_Value"].iloc[-1] / initial_capital - 1)
 
     st.markdown("""
-        ### Performance Summary
-    """)
-    st.write(f"**Strategy Return:** {strat_ret:.2f}%")
-    st.write(f"**Buy & Hold Return:** {bh_ret:.2f}%")
-
+    #### 📊 Performance Summary
+    - **Strategy Return:** {:.2f}%
+    - **Buy & Hold Return:** {:.2f}%
+    """.format(strat_return, hold_return))
