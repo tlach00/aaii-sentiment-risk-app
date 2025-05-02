@@ -305,25 +305,28 @@ with tab6:
     #### 📈 Performance Summary
     - **Multi-Factor Strategy Return:** {mf_ret:.2%}  
     - **Buy & Hold Return:** {bh_ret:.2%}
-# ---------------------------- TAB 7 ----------------------------------
-with tab7:
-    import numpy as np
-    import torch
-    import torch.nn as nn
-    import torch.optim as optim
-    import json
-    import pandas as pd
 
+
+
+
+# ---------------------------- TAB 7 ----------------------------------
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import json
+
+with tab7:
     st.header("🧠 Deep Q-Learning Strategy")
     st.markdown("""
-    This strategy uses Deep Q-Learning to learn an optimal trading policy based on sentiment and price momentum.
+This strategy uses Deep Q-Learning to learn an optimal trading policy based on sentiment and price momentum.
 
-    - **State:** Continuous inputs - z-scores of bullish sentiment, bearish sentiment, bull-bear spread, and 4-week price return  
-    - **Actions:** -1 (short), 0 (neutral), 1 (long)  
-    - **Reward:** Next week return * action  
-    - **Training:** 2010 to 2015  
-    - **Testing:** 2016 to 2025
-    """)
+- **State:** Continuous inputs - z-scores of bullish sentiment, bearish sentiment, bull-bear spread, and 4-week price return  
+- **Actions:** -1 (short), 0 (neutral), 1 (long)  
+- **Reward:** Next week return * action  
+- **Training:** 2010 to 2015  
+- **Testing:** 2016 to 2025
+""")
 
     # Prepare data
     dql_df = clean_df.copy().set_index("Date")
@@ -331,21 +334,24 @@ with tab7:
     dql_df['Spread'] = dql_df['Bullish'] - dql_df['Bearish']
     dql_df['Momentum'] = dql_df['SP500_Close'].pct_change(4)
 
+    # Z-scores
     for col in ['Bullish', 'Bearish', 'Spread', 'Momentum']:
         dql_df[f"Z_{col}"] = (dql_df[col] - dql_df[col].rolling(20).mean()) / dql_df[col].rolling(20).std()
 
     dql_df = dql_df.dropna()
     features = dql_df[["Z_Bullish", "Z_Bearish", "Z_Spread", "Z_Momentum"]].values
-    returns = dql_df['SP500_Return'].shift(-1).values / 100
+    returns = dql_df['SP500_Return'].shift(-1).values / 100  # Next week's return
 
     actions = [-1, 0, 1]
 
+    # Split
     split_date = pd.to_datetime("2016-01-01")
     train_idx = dql_df.index < split_date
     test_idx = dql_df.index >= split_date
 
     X_train = features[train_idx]
     y_train = returns[train_idx]
+
     X_test = features[test_idx]
     y_test = returns[test_idx]
 
@@ -403,6 +409,7 @@ with tab7:
     st.markdown("#### 🧠 Training Action Distribution:")
     st.json(train_actions)
 
+    # Evaluate on test set
     portfolio = [10000]
     bh = [10000]
     test_actions = []
@@ -431,18 +438,15 @@ with tab7:
     bh_return = (bh[-1] / bh[0] - 1) * 100
 
     st.subheader("📊 Performance Summary (2016–2024)")
-    q_return_str = f"{q_return:.2f}%"
-    bh_return_str = f"{bh_return:.2f}%"
-    summary = (
-        f"- **Deep Q-learning Strategy Return**: {q_return_str}\n"
-        f"- **Buy & Hold Return**: {bh_return_str}"
+    st.markdown(
+        f"- **Deep Q-learning Strategy Return**: {q_return:.2f}%  \n"
+        f"- **Buy & Hold Return**: {bh_return:.2f}%"
     )
-    st.markdown(summary)
 
     test_actions = np.array(test_actions)
-    st.markdown(f"""
-**Action Distribution (Test Set):**  
-- Long: {np.sum(test_actions == 1)}  
-- Short: {np.sum(test_actions == -1)}  
-- Neutral: {np.sum(test_actions == 0)}
-""")
+    st.markdown(
+        f"**Action Distribution (Test Set):**  \n"
+        f"- Long: {np.sum(test_actions == 1)}  \n"
+        f"- Short: {np.sum(test_actions == -1)}  \n"
+        f"- Neutral: {np.sum(test_actions == 0)}"
+    )
