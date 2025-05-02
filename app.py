@@ -324,26 +324,26 @@ with tab7:
     import torch.nn as nn
     import torch.optim as optim
 
+    # Prepare data
     dql_df = clean_df.copy().set_index("Date")
     dql_df = dql_df[['Bullish', 'Bearish', 'SP500_Close', 'SP500_Return']].dropna()
-
     dql_df['Spread'] = dql_df['Bullish'] - dql_df['Bearish']
     dql_df['Momentum'] = dql_df['SP500_Close'].pct_change(4)
 
+    # Z-scores
     for col in ['Bullish', 'Bearish', 'Spread', 'Momentum']:
         dql_df[f"Z_{col}"] = (dql_df[col] - dql_df[col].rolling(20).mean()) / dql_df[col].rolling(20).std()
 
     dql_df = dql_df.dropna()
-
     features = dql_df[["Z_Bullish", "Z_Bearish", "Z_Spread", "Z_Momentum"]].values
-    returns = dql_df['SP500_Return'].shift(-1).values / 100
+    returns = dql_df['SP500_Return'].shift(-1).values / 100  # forward return
 
     actions = [-1, 0, 1]
-    split_train = pd.to_datetime("2016-01-01")
-    split_test = pd.to_datetime("2025-01-01")
 
-    train_idx = (dql_df.index < split_train)
-    test_idx = (dql_df.index >= split_train) & (dql_df.index <= split_test)
+    # Train-test split
+    split_date = pd.to_datetime("2016-01-01")
+    train_idx = dql_df.index < split_date
+    test_idx = dql_df.index >= split_date
 
     X_train = features[train_idx]
     y_train = returns[train_idx]
@@ -355,7 +355,7 @@ with tab7:
             super().__init__()
             self.fc1 = nn.Linear(4, 32)
             self.fc2 = nn.Linear(32, 32)
-            self.out = nn.Linear(32, 3)
+            self.out = nn.Linear(32, 3)  # 3 actions
 
         def forward(self, x):
             x = torch.relu(self.fc1(x))
@@ -363,36 +363,46 @@ with tab7:
             return self.out(x)
 
     @st.cache_resource
-    def train_dql_model(X_train, y_train, epochs=20, gamma=0.95):
+    def train_dql_model(X_train, y_train, epochs=30):
         model = QNet()
         optimizer = optim.Adam(model.parameters(), lr=0.001)
         loss_fn = nn.MSELoss()
         epsilon = 0.1
+        gamma = 0.9
+        action_counts = {a: 0 for a in actions}
 
         for epoch in range(epochs):
             for i in range(len(X_train) - 1):
-                s = torch.tensor(X_train[i], dtype=torch.float32)
-                s_next = torch.tensor(X_train[i + 1], dtype=torch.float32)
-                Q_pred = model(s)
-                a_idx = np.random.choice([0, 1, 2]) if np.random.rand() < epsilon else torch.argmax(Q_pred).item()
-                a = actions[a_idx]
-                r = y_train[i] * a
+                state = torch.tensor(X_train[i], dtype=torch.float32)
+                next_state = torch.tensor(X_train[i+1], dtype=torch.float32)
+                Q_pred = model(state)
 
-                with torch.no_grad():
-                    Q_next = model(s_next).max().item()
-                    q_target = Q_pred.clone()
-                    q_target[a_idx] = r + gamma * Q_next
+                # Choose action
+                if np.random.rand() < epsilon:
+                    a = np.random.choice(actions)
+                else:
+                    a_idx = torch.argmax(Q_pred).item()
+                    a = actions[a_idx]
 
-                loss = loss_fn(Q_pred, q_target)
+                a_idx = actions.index(a)
+                action_counts[a] += 1
+                reward = y_train[i] * a
+
+                Q_target = Q_pred.clone().detach()
+                Q_target[a_idx] = reward + gamma * model(next_state).max().item()
+
+                loss = loss_fn(Q_pred, Q_target)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
+        st.write("🧠 Training Action Distribution:", action_counts)
         return model
 
     with st.spinner("Training Deep Q-Network..."):
         q_model = train_dql_model(X_train, y_train)
 
+    # Evaluation
     portfolio = [10000]
     bh = [10000]
     test_actions = []
@@ -420,7 +430,7 @@ with tab7:
     q_return = (portfolio[-1] / portfolio[0] - 1) * 100
     bh_return = (bh[-1] / bh[0] - 1) * 100
 
-    st.subheader("🧾 Performance Summary (2016–2024)")
+    st.subheader("📊 Performance Summary (2016–2024)")
     st.markdown(f"""
     - **Deep Q-Learning Strategy Return**: {q_return:.2f}%  
     - **Buy & Hold Return**: {bh_return:.2f}%
