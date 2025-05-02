@@ -315,15 +315,14 @@ import numpy as np
 
 with tab7:
     st.header("\U0001F9E0 Deep Q-Learning Strategy")
-   st.markdown("""
-This strategy uses Deep Q-Learning to learn an optimal trading policy based on sentiment and price momentum.
-
-- **State:** Continuous inputs - z-scores of bullish sentiment, bearish sentiment, bull-bear spread, and 4-week price return.  
-- **Actions:** -1 (short), 0 (neutral), 1 (long)  
-- **Reward:** Next week's return * action  
-- **Training:** 2010 to 2015  
-- **Testing:** 2016 to 2025
-""")
+    st.markdown("""
+    This strategy uses Deep Q-Learning to learn an optimal trading policy based on sentiment and price momentum.
+    - **State:** Continuous inputs - z-scores of bullish sentiment, bearish sentiment, bull-bear spread, and 4-week price return.  
+    - **Actions:** -1 (short), 0 (neutral), 1 (long)  
+    - **Reward:** Next week's return * action  
+    - **Training:** 2010 to 2015  
+    - **Testing:** 2016 to 2025
+    """)
 
     # Prepare data
     dql_df = clean_df.copy().set_index("Date")
