@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import datetime
+from scipy.stats import zscore
+
 
 st.set_page_config(page_title="AAII Sentiment Dashboard (Altair)", layout="wide")
 st.title(":bar_chart: AAII Sentiment & S&P 500 Dashboard")
