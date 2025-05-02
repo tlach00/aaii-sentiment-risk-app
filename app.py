@@ -98,44 +98,48 @@ with tab2:
 
 # TAB 3 - Placeholder for future strategy implementation
 with tab3:
-    st.header("📈 Sentiment-Based Backtest Strategy (Spread-Based)")
+    st.header("📈 Sentiment-Based Backtest Strategy (Z-Score Method)")
 
     st.sidebar.markdown("### Strategy Parameters")
-    spread_threshold = st.sidebar.slider("Bull-Bear Spread Threshold (%)", min_value=0.0, max_value=50.0, value=20.0, step=1.0)
+    rolling_window = st.sidebar.slider("Rolling Window (days)", min_value=5, max_value=60, value=20, step=5)
     initial_capital = st.sidebar.number_input("Initial Capital ($)", min_value=1000, value=10000, step=1000)
 
+    # Prepare daily data by forward-filling weekly values
     df = clean_df.copy()
-    df = df.set_index("Date")
+    df = df.set_index("Date").resample('D').ffill().dropna().copy()
+    df["SP500_Return"] = df["SP500_Close"].pct_change()
+    df["Sentiment"] = df["Bullish"]  # You can switch to Bull-Bear Spread here if preferred
 
-    # Calculate Bull-Bear Spread
-    df["Spread"] = df["Bullish"] - df["Bearish"]
+    # Compute rolling Z-scores
+    df["Z_Sentiment"] = (df["Sentiment"] - df["Sentiment"].rolling(window=rolling_window).mean()) / df["Sentiment"].rolling(window=rolling_window).std()
+    df["Z_Price"] = (df["SP500_Close"] - df["SP500_Close"].rolling(window=rolling_window).mean()) / df["SP500_Close"].rolling(window=rolling_window).std()
 
-    # Create signal based on spread
+    # Generate signals based on Z-Score comparison
     df["Signal"] = 0
-    df.loc[df["Spread"] >= spread_threshold, "Signal"] = 1  # Long when spread is high
-    df.loc[df["Spread"] <= -spread_threshold, "Signal"] = -1  # Short when spread is deeply negative
-
-    df["Signal"] = df["Signal"].shift(1).fillna(0)
+    df.loc[df["Z_Sentiment"] > df["Z_Price"], "Signal"] = 1   # Long when sentiment stronger
+    df.loc[df["Z_Sentiment"] < df["Z_Price"], "Signal"] = -1  # Short when price leads
+    df["Position"] = df["Signal"].shift(1).fillna(0)
 
     # Compute returns
-    df["Strategy_Return"] = df["SP500_Return"] * df["Signal"]
-    df["BuyHold"] = (1 + df["SP500_Return"] / 100).cumprod() * initial_capital
-    df["Strategy"] = (1 + df["Strategy_Return"] / 100).cumprod() * initial_capital
+    df["Strategy_Return"] = df["SP500_Return"] * df["Position"]
+    df = df.dropna()
+    df["BuyHold"] = initial_capital * (1 + df["SP500_Return"]).cumprod()
+    df["Strategy"] = initial_capital * (1 + df["Strategy_Return"]).cumprod()
 
-    # Plot cumulative returns
-    st.markdown("### Cumulative Return")
+    # Plot performance
+    st.subheader("Cumulative Return")
     fig, ax = plt.subplots(figsize=(10, 4))
     ax.plot(df.index, df["BuyHold"], label="Buy & Hold", color="gray", linewidth=1.2)
-    ax.plot(df.index, df["Strategy"], label="Sentiment Spread Strategy", color="green", linewidth=1.2)
+    ax.plot(df.index, df["Strategy"], label="Z-Score Sentiment Strategy", color="blue", linewidth=1.2)
     ax.set_ylabel("Portfolio Value ($)")
     ax.legend()
     ax.grid(True, linestyle="--", alpha=0.4)
     st.pyplot(fig)
 
-    # Summary
+    # Performance summary
+    total_return_strategy = df["Strategy"].iloc[-1] / initial_capital - 1
+    total_return_bh = df["BuyHold"].iloc[-1] / initial_capital - 1
     st.subheader("Performance Summary")
-    strategy_return = df["Strategy"].iloc[-1] / initial_capital - 1
-    buy_hold_return = df["BuyHold"].iloc[-1] / initial_capital - 1
+    st.write(f"**Strategy Return**: {total_return_strategy:.2%}")
+    st.write(f"**Buy & Hold Return**: {total_return_bh:.2%}")
 
-    st.write(f"**Strategy Return**: {strategy_return:.2%}")
-    st.write(f"**Buy & Hold Return**: {buy_hold_return:.2%}")
