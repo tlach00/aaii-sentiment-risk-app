@@ -113,10 +113,9 @@ with tab2:
 # ---------------------------- TAB 3 ----------------------------------
 
 with tab3:
-    st.markdown("""
-    ### 🧪 Z-Score Strategy Backtest
-    This strategy takes long or short positions based on Z-score comparisons between sentiment and price.
-    """)
+    st.header(':green_book: Z-Score Strategy Backtest')
+
+    st.markdown('This strategy compares z-scores of bullish sentiment and S&P 500 price. If sentiment exceeds price → long, otherwise → short.')
 
     col1, col2 = st.columns(2)
     with col1:
@@ -124,36 +123,41 @@ with tab3:
     with col2:
         initial_capital = st.number_input("Initial Capital ($)", value=10000)
 
-    z_df = clean_df.copy()
-    z_df["Bullish_Z"] = (z_df["Bullish"] - z_df["Bullish"].rolling(window=z_window).mean()) / z_df["Bullish"].rolling(window=z_window).std()
-    z_df["Price_Z"] = (z_df["SP500_Close"] - z_df["SP500_Close"].rolling(window=z_window).mean()) / z_df["SP500_Close"].rolling(window=z_window).std()
+    # Compute z-scores
+    df_z = clean_df.copy()
+    df_z['Bullish_Z'] = (df_z['Bullish'] - df_z['Bullish'].rolling(z_window).mean()) / df_z['Bullish'].rolling(z_window).std()
+    df_z['Price_Z'] = (df_z['SP500_Close'] - df_z['SP500_Close'].rolling(z_window).mean()) / df_z['SP500_Close'].rolling(z_window).std()
 
-    z_df = z_df.dropna().copy()
-    z_df["Position"] = (z_df["Bullish_Z"] > z_df["Price_Z"]).astype(int) * 2 - 1
-    z_df["Return"] = z_df["SP500_Return"] / 100
-    z_df["Strategy_Return"] = z_df["Return"] * z_df["Position"]
-    z_df["Strategy_Value"] = (1 + z_df["Strategy_Return"]).cumprod() * initial_capital
-    z_df["BuyHold_Value"] = (1 + z_df["Return"]).cumprod() * initial_capital
+    df_z.dropna(inplace=True)
 
-    base = alt.Chart(z_df).encode(x="Date:T")
+    # Trading rule
+    df_z['Position'] = (df_z['Bullish_Z'] > df_z['Price_Z']).astype(int)
+    df_z['Position'] = df_z['Position'].replace({0: -1, 1: 1})  # Long = 1, Short = -1
+    df_z['Strategy_Return'] = df_z['SP500_Return'] * df_z['Position'] / 100
 
-    strat_line = base.mark_line(color="blue").encode(
-        y=alt.Y("Strategy_Value", title="Portfolio Value ($)"),
-        tooltip=["Date", "Strategy_Value"]
-    )
+    # Compute cumulative returns
+    df_z['BuyHold'] = (1 + df_z['SP500_Return']/100).cumprod() * initial_capital
+    df_z['Strategy'] = (1 + df_z['Strategy_Return']).cumprod() * initial_capital
 
-    hold_line = base.mark_line(color="gray").encode(
-        y="BuyHold_Value",
-        tooltip=["Date", "BuyHold_Value"]
-    )
+    # Plot cumulative return
+    st.subheader("Cumulative Return")
+    line_chart = alt.Chart(df_z.reset_index()).transform_fold(
+        ["BuyHold", "Strategy"],
+        as_=["key", "value"]
+    ).mark_line().encode(
+        x="Date:T",
+        y=alt.Y("value:Q", title="Portfolio Value ($)"),
+        color="key:N"
+    ).properties(height=300)
 
-    st.altair_chart((strat_line + hold_line).properties(height=400), use_container_width=True)
+    st.altair_chart(line_chart, use_container_width=True)
 
-    strat_return = 100 * (z_df["Strategy_Value"].iloc[-1] / initial_capital - 1)
-    hold_return = 100 * (z_df["BuyHold_Value"].iloc[-1] / initial_capital - 1)
+    # Summary returns
+    buy_return = (df_z['BuyHold'].iloc[-1] - initial_capital) / initial_capital * 100
+    strat_return = (df_z['Strategy'].iloc[-1] - initial_capital) / initial_capital * 100
 
     st.markdown("""
-    #### 📊 Performance Summary
+    ### Performance Summary
     - **Strategy Return:** {:.2f}%
     - **Buy & Hold Return:** {:.2f}%
-    """.format(strat_return, hold_return))
+    """.format(strat_return, buy_return))
