@@ -30,7 +30,6 @@ tab1, tab2, tab3, tab4 = st.tabs([
     ":bar_chart: Z-Score Strategy",
     ":arrow_up_down: Momentum Strategy"
 ])
-])
 
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
