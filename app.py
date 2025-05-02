@@ -24,10 +24,12 @@ def load_clean_data():
 raw_df = load_raw_excel()
 clean_df = load_clean_data()
 
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     ":file_folder: Raw Excel Viewer",
     ":chart_with_upwards_trend: Interactive Dashboard",
-    ":bar_chart: Sentiment Strategy"
+    ":bar_chart: Z-Score Strategy",
+    ":arrow_up_down: Momentum Strategy"
+])
 ])
 
 # ---------------------------- TAB 1 ----------------------------------
@@ -149,46 +151,48 @@ with tab3:
 # ---------------------------- TAB 4 ----------------------------------
 
 with tab4:
-    st.header("📊 Sentiment Momentum Strategy")
-    st.markdown("""
-    This strategy compares a short-term and long-term moving average of **bullish sentiment**.
-    - If **short MA > long MA** → bullish momentum → go long
-    - If **short MA < long MA** → bearish shift → go short
-    """)
+    st.markdown("## :arrow_up_down: Sentiment Momentum Strategy")
+    st.markdown("This strategy compares short-term vs long-term moving averages of bullish sentiment. If short-term > long-term → long, otherwise → short.")
 
     col1, col2 = st.columns(2)
     with col1:
-        short_ma = st.slider("Short-term MA (weeks)", 2, 20, 4)
+        short_window = st.slider("Short-Term MA (weeks)", min_value=1, max_value=10, value=2)
     with col2:
-        long_ma = st.slider("Long-term MA (weeks)", 10, 52, 26)
+        long_window = st.slider("Long-Term MA (weeks)", min_value=5, max_value=52, value=15)
 
-    momentum_df = clean_df.copy().set_index("Date").dropna()
-    momentum_df["Bull_MA_short"] = momentum_df["Bullish"].rolling(window=short_ma).mean()
-    momentum_df["Bull_MA_long"] = momentum_df["Bullish"].rolling(window=long_ma).mean()
+    df_mom = clean_df.copy().set_index("Date")
+    df_mom = df_mom[['Bullish', 'SP500_Close', 'SP500_Return']].dropna()
 
-    momentum_df = momentum_df.dropna()
-    momentum_df["Signal"] = (momentum_df["Bull_MA_short"] > momentum_df["Bull_MA_long"]).astype(int) * 2 - 1
-    momentum_df["Position"] = momentum_df["Signal"].shift(1).fillna(0)
-    momentum_df["SP500_Ret"] = momentum_df["SP500_Return"] / 100
-    momentum_df["Strat_Ret"] = momentum_df["Position"] * momentum_df["SP500_Ret"]
-    momentum_df["BuyHold"] = (1 + momentum_df["SP500_Ret"]).cumprod()
-    momentum_df["Momentum"] = (1 + momentum_df["Strat_Ret"]).cumprod()
+    df_mom['MA_short'] = df_mom['Bullish'].rolling(window=short_window).mean()
+    df_mom['MA_long'] = df_mom['Bullish'].rolling(window=long_window).mean()
 
-    chart = alt.Chart(momentum_df.reset_index()).transform_fold([
+    df_mom = df_mom.dropna()
+
+    df_mom['Signal'] = (df_mom['MA_short'] > df_mom['MA_long']).astype(int) * 2 - 1
+    df_mom['Position'] = df_mom['Signal'].shift(1).fillna(0)
+
+    df_mom['SP500_Ret'] = df_mom['SP500_Return'] / 100
+    df_mom['Strategy_Ret'] = df_mom['Position'] * df_mom['SP500_Ret']
+
+    initial_mom_capital = 10000
+    df_mom['Momentum'] = (1 + df_mom['Strategy_Ret']).cumprod() * initial_mom_capital
+    df_mom['BuyHold'] = (1 + df_mom['SP500_Ret']).cumprod() * initial_mom_capital
+
+    mom_chart = alt.Chart(df_mom.reset_index()).transform_fold([
         "BuyHold", "Momentum"]
     ).mark_line().encode(
         x="Date:T",
-        y=alt.Y("value:Q", title="Portfolio Value (normalized)"),
+        y=alt.Y("value:Q", title="Portfolio Value ($)"),
         color=alt.Color("key:N", title="Strategy")
     ).properties(height=350)
 
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(mom_chart, use_container_width=True)
 
-    mret = momentum_df["Momentum"].iloc[-1] - 1
-    bret = momentum_df["BuyHold"].iloc[-1] - 1
+    strat_ret = df_mom["Momentum"].iloc[-1] / initial_mom_capital - 1
+    bh_ret = df_mom["BuyHold"].iloc[-1] / initial_mom_capital - 1
 
     st.markdown(f"""
-    #### 📈 Performance Summary
-    - **Momentum Strategy Return:** {mret:.2%}  
-    - **Buy & Hold Return:** {bret:.2%}
+    ### 📊 Performance Summary
+    - **Momentum Strategy Return:** {strat_ret:.2%}  
+    - **Buy & Hold Return:** {bh_ret:.2%}
     """)
