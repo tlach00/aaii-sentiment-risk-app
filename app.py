@@ -155,20 +155,19 @@ with tab3:
     - **Strategy Return**: {strategy_return:.2f}%  
     - **Buy & Hold Return**: {buyhold_return:.2f}%
     """)
-
-
 # ---------------------------- TAB 4 ----------------------------------
 
-with st.expander("📊 Z-Score Spread Strategy vs. Buy & Hold", expanded=True):
+with tab4:
     st.markdown("""
-    ### 🟥 Z-Score Spread Strategy
-    This strategy goes long when normalized (z-score) bullish sentiment is stronger than normalized S&P 500 price — a sign of relative optimism.
-    Otherwise, it goes short. We compare it to a passive Buy & Hold.
+    ### 🟥 Z-Score Spread Strategy vs. Buy & Hold
+    This strategy compares z-scores of bullish sentiment and price.
+    When sentiment is stronger (Z_Bullish > Z_Price), we go long.
+    Otherwise, we short. Compare with a passive Buy & Hold strategy.
     """)
 
     col1, col2 = st.columns(2)
     with col1:
-        spread_window = st.slider("Z-Score Rolling Window (weeks)", 5, 52, 15)
+        spread_window = st.slider("Z-Score Rolling Window (weeks)", 1, 5, 2)
     with col2:
         base_capital = st.number_input("Initial Capital ($)", value=10000, step=1000)
 
@@ -181,19 +180,17 @@ with st.expander("📊 Z-Score Spread Strategy vs. Buy & Hold", expanded=True):
 
     spread_df = spread_df.dropna()
 
-    # Strategy: go long if Z_Bullish > Z_Price, else short
+    # Strategy logic
     spread_df["Signal"] = (spread_df["Z_Bullish"] > spread_df["Z_Price"]).astype(int) * 2 - 1
     spread_df["Position"] = spread_df["Signal"].shift(1).fillna(0)
 
     spread_df["SP500_Ret"] = spread_df["SP500_Return"] / 100
     spread_df["Strategy_Ret"] = spread_df["Position"] * spread_df["SP500_Ret"]
 
-    # Cumulative returns
     spread_df["BuyHold"] = (1 + spread_df["SP500_Ret"]).cumprod() * base_capital
     spread_df["ZSpread"] = (1 + spread_df["Strategy_Ret"]).cumprod() * base_capital
 
-    # Chart
-    spread_chart = alt.Chart(spread_df.reset_index()).transform_fold([
+    chart = alt.Chart(spread_df.reset_index()).transform_fold([
         "BuyHold", "ZSpread"]
     ).mark_line().encode(
         x="Date:T",
@@ -201,14 +198,13 @@ with st.expander("📊 Z-Score Spread Strategy vs. Buy & Hold", expanded=True):
         color=alt.Color("key:N", title="Strategy")
     ).properties(height=350)
 
-    st.altair_chart(spread_chart, use_container_width=True)
+    st.altair_chart(chart, use_container_width=True)
 
     strat_ret = spread_df["ZSpread"].iloc[-1] / base_capital - 1
     bh_ret = spread_df["BuyHold"].iloc[-1] / base_capital - 1
 
     st.markdown(f"""
-    #### ✅ Performance Summary
+    #### 📈 Performance Summary
     - **Z-Score Strategy Return:** {strat_ret:.2%}  
     - **Buy & Hold Return:** {bh_ret:.2%}
     """)
-
