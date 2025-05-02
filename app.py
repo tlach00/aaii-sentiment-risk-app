@@ -305,11 +305,11 @@ with tab6:
     #### 📈 Performance Summary
     - **Multi-Factor Strategy Return:** {mf_ret:.2%}  
     - **Buy & Hold Return:** {bh_ret:.2%}
+    """)
 
 
 
 
-# ---------------------------- TAB 7 ----------------------------------
 # ---------------------------- TAB 7 ----------------------------------
 import numpy as np
 import torch
