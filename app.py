@@ -308,38 +308,50 @@ with tab6:
     """)
 
 
-
-
 # ---------------------------- TAB 7 ----------------------------------
 with tab7:
-    st.header("🧠 Deep Q-Learning Strategy")
-
     import numpy as np
     import torch
     import torch.nn as nn
     import torch.optim as optim
 
-    # Prepare data
+    st.markdown("## 🧠 Deep Q-Learning Strategy")
+
+    st.markdown(
+        """
+        This strategy uses Deep Q-Learning to learn an optimal trading policy based on sentiment and price momentum.
+
+        - **State:** Continuous inputs - z-scores of bullish sentiment, bearish sentiment, bull-bear spread, and 4-week price return  
+        - **Actions:** -1 (short), 0 (neutral), 1 (long)  
+        - **Reward:** Next week return * action  
+        - **Training:** 2010 to 2015  
+        - **Testing:** 2016 to 2025
+        """
+    )
+
+    # Prepare features
     dql_df = clean_df.copy().set_index("Date")
-    dql_df['Spread'] = dql_df['Bullish'] - dql_df['Bearish']
-    dql_df['Momentum'] = dql_df['SP500_Close'].pct_change(4)
-    for col in ['Bullish', 'Bearish', 'Spread', 'Momentum']:
+    dql_df = dql_df[["Bullish", "Bearish", "SP500_Close", "SP500_Return"]].dropna()
+    dql_df["Spread"] = dql_df["Bullish"] - dql_df["Bearish"]
+    dql_df["Momentum"] = dql_df["SP500_Close"].pct_change(4)
+
+    for col in ["Bullish", "Bearish", "Spread", "Momentum"]:
         dql_df[f"Z_{col}"] = (dql_df[col] - dql_df[col].rolling(20).mean()) / dql_df[col].rolling(20).std()
+
     dql_df = dql_df.dropna()
-
     features = dql_df[["Z_Bullish", "Z_Bearish", "Z_Spread", "Z_Momentum"]].values
-    returns = dql_df["SP500_Return"].shift(-1).values / 100
+    returns = dql_df["SP500_Return"].shift(-1).values / 100  # next week return
 
+    actions = [-1, 0, 1]
     split_date = pd.to_datetime("2016-01-01")
     train_idx = dql_df.index < split_date
     test_idx = dql_df.index >= split_date
 
     X_train = features[train_idx]
     y_train = returns[train_idx]
+
     X_test = features[test_idx]
     y_test = returns[test_idx]
-
-    actions = [-1, 0, 1]
 
     class QNet(nn.Module):
         def __init__(self):
@@ -354,27 +366,25 @@ with tab7:
             return self.out(x)
 
     @st.cache_resource
-    def train_q_model(X_train, y_train, gamma=0.95, epochs=5):
+    def train_dql_model(X_train, y_train, epochs=5, gamma=0.95):
         model = QNet()
-        opt = optim.Adam(model.parameters(), lr=0.001)
+        optimizer = optim.Adam(model.parameters(), lr=0.001)
         loss_fn = nn.MSELoss()
-        eps = 0.2
-        act_count = {a: 0 for a in actions}
+        epsilon = 0.2
+        action_count = {a: 0 for a in actions}
 
         for epoch in range(epochs):
             for i in range(len(X_train) - 1):
                 s = torch.tensor(X_train[i], dtype=torch.float32)
-                s_next = torch.tensor(X_train[i+1], dtype=torch.float32)
+                s_next = torch.tensor(X_train[i + 1], dtype=torch.float32)
                 r = y_train[i]
 
                 Q_pred = model(s)
-
-                if np.random.rand() < eps:
+                if np.random.rand() < epsilon:
                     a = np.random.choice(actions)
                 else:
                     a = actions[torch.argmax(Q_pred).item()]
-
-                act_count[a] += 1
+                action_count[a] += 1
                 a_idx = actions.index(a)
 
                 Q_target = Q_pred.clone().detach()
@@ -382,60 +392,62 @@ with tab7:
                 Q_target[a_idx] = r * a + gamma * Q_next.max().item()
 
                 loss = loss_fn(Q_pred, Q_target)
-                opt.zero_grad()
+                optimizer.zero_grad()
                 loss.backward()
-                opt.step()
+                optimizer.step()
 
-        return model, act_count
+        return model, action_count
 
     with st.spinner("Training Deep Q-Network..."):
-        model, train_actions = train_q_model(X_train, y_train)
+        q_model, train_actions = train_dql_model(X_train, y_train)
 
-    st.subheader("📊 Training Action Distribution")
+    st.markdown("### 📊 Training Action Distribution")
     st.json(train_actions)
 
-    portfolio = [10000]
-    bh = [10000]
+    # Simulate portfolio
+    initial_capital = 10000
+    portfolio = [initial_capital]
+    bh = [initial_capital]
     test_actions = []
 
     for i in range(len(X_test)):
         s = torch.tensor(X_test[i], dtype=torch.float32)
-        Q_vals = model(s)
+        Q_vals = q_model(s)
         a_idx = torch.argmax(Q_vals).item()
         a = actions[a_idx]
         test_actions.append(a)
+
         r = y_test[i]
         portfolio.append(portfolio[-1] * (1 + a * r))
         bh.append(bh[-1] * (1 + r))
 
+    dql_dates = dql_df.index[test_idx]
     result_df = pd.DataFrame({
-        "Date": dql_df.index[test_idx],
+        "Date": dql_dates,
         "Q_Learning": portfolio[1:],
         "BuyHold": bh[1:]
-    }).set_index("Date")
+    })
 
-    st.line_chart(result_df)
+    st.line_chart(result_df.set_index("Date"), use_container_width=True)
 
-    # Calculate performance
-    q_return = (portfolio[-1] / portfolio[0] - 1) * 100
-    bh_return = (bh[-1] / bh[0] - 1) * 100
-    
-    # Display performance summary
-    st.markdown("### 📊 Performance Summary (2016–2025)")
+    # Compute and display returns
+    if len(portfolio) > 1 and not np.isnan(portfolio[-1]):
+        q_return = (portfolio[-1] / portfolio[0] - 1) * 100
+        bh_return = (bh[-1] / bh[0] - 1) * 100
+    else:
+        q_return = float("nan")
+        bh_return = float("nan")
+
+    st.markdown("### 📈 Performance Summary (2016–2025)")
     st.markdown(
         f"- **Deep Q-Learning Strategy Return**: {q_return:.2f}%  \n"
         f"- **Buy & Hold Return**: {bh_return:.2f}%"
     )
-    
-    # Action distribution on test set
+
     test_actions = np.array(test_actions)
-    long_count = np.sum(test_actions == 1)
-    short_count = np.sum(test_actions == -1)
-    neutral_count = np.sum(test_actions == 0)
-    
     st.markdown("**Action Distribution (Test Set):**")
     st.markdown(
-        f"- Long: {long_count}  \n"
-        f"- Short: {short_count}  \n"
-        f"- Neutral: {neutral_count}"
+        f"- Long: {np.sum(test_actions == 1)}  \n"
+        f"- Short: {np.sum(test_actions == -1)}  \n"
+        f"- Neutral: {np.sum(test_actions == 0)}"
     )
