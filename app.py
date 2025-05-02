@@ -322,7 +322,6 @@ with tab6:
 
 # ---------------------------- TAB 7 ----------------------------------
 # ---------------------------- TAB 7 ----------------------------------
-# 📌 Tab 7: Deep Q-Learning Strategy
 with tab7:
     st.markdown("""
     ### 🧠 Deep Q-Learning Strategy
@@ -335,22 +334,19 @@ with tab7:
     - **Testing Range:** Selectable
     """)
 
-    # Training and testing sliders
-    st.subheader(":calendar: Training and Testing Period")
+    st.subheader("📆 Training and Testing Period")
     min_year = int(clean_df["Date"].dt.year.min())
     max_year = int(clean_df["Date"].dt.year.max())
 
     col1, col2 = st.columns(2)
     with col1:
-        train_start = st.slider("Training Start Year", min_value=1987, max_value=max_year - 1, value=2000)
+        train_start = st.slider("Training Start Year", min_value=min_year, max_value=max_year, value=2000)
     with col2:
         train_end = st.slider("Training End Year", min_value=train_start + 1, max_value=max_year, value=2015)
 
-    # Filter data for training and testing
     df_ml = clean_df.copy()
-    df_ml = df_ml[(df_ml['Date'].dt.year >= 1987)].dropna()
+    df_ml = df_ml[df_ml["Date"].dt.year >= min_year].dropna()
 
-    # Compute features
     def zscore(series):
         return (series - series.rolling(window=52).mean()) / series.rolling(window=52).std()
 
@@ -365,12 +361,9 @@ with tab7:
 
     features = ['Bullish_z', 'Bearish_z', 'Spread_z', '4w_return', 'volatility', 'ma', 'lagged_return']
     df_ml['Future_Return'] = df_ml['SP500_Close'].pct_change().shift(-1)
-
-    # Label actions based on future return
     df_ml['Action'] = np.where(df_ml['Future_Return'] > 0.002, 1,
-                         np.where(df_ml['Future_Return'] < -0.002, -1, 0))
+                        np.where(df_ml['Future_Return'] < -0.002, -1, 0))
 
-    # Split training/testing
     df_train = df_ml[(df_ml['Date'].dt.year >= train_start) & (df_ml['Date'].dt.year <= train_end)]
     df_test = df_ml[df_ml['Date'].dt.year > train_end]
 
@@ -380,7 +373,6 @@ with tab7:
     X_test = df_test[features].values
     y_test = df_test['Action'].values
 
-    # Filter for valid rows
     valid_train = np.isfinite(X_train).all(axis=1) & np.isfinite(y_train)
     X_train, y_train = X_train[valid_train], y_train[valid_train]
 
@@ -389,25 +381,21 @@ with tab7:
     test_dates = df_test['Date'].values[valid_test]
     test_prices = df_test['SP500_Close'].values[valid_test]
 
-    # Train MLPRegressor as function approximator
     model = MLPRegressor(hidden_layer_sizes=(64, 64), max_iter=200, random_state=42)
     model.fit(X_train, y_train)
 
-    # Predict actions on test set
     q_values = model.predict(X_test)
-    actions_test = np.round(q_values).astype(int)
-    actions_test = np.clip(actions_test, -1, 1)
 
-    # Show action counts
-    st.subheader(":brain: Training Action Distribution:")
-    action_counts_train = {
+    # Soft thresholds instead of rounding
+    actions_test = np.where(q_values > 0.05, 1, np.where(q_values < -0.05, -1, 0))
+
+    st.subheader("🧠 Training Action Distribution:")
+    st.write({
         "0": int(np.sum(y_train == 0)),
         "1": int(np.sum(y_train == 1)),
         "-1": int(np.sum(y_train == -1))
-    }
-    st.write(action_counts_train)
+    })
 
-    # Simulate returns
     portfolio_returns = df_test['Future_Return'].values[valid_test] * actions_test
     bh_returns = df_test['Future_Return'].values[valid_test]
 
@@ -420,32 +408,28 @@ with tab7:
         'BuyHold': bh_cum
     }).replace([np.inf, -np.inf], np.nan).dropna()
 
-    chart = alt.Chart(df_plot).transform_fold([
-        "BuyHold", "Q_Learning"]
-    ).mark_line().encode(
+    chart = alt.Chart(df_plot.melt("Date")).mark_line().encode(
         x='Date:T',
         y=alt.Y('value:Q', title='Portfolio Value'),
-        color=alt.Color('key:N', title='Strategy')
+        color='variable:N'
     ).properties(height=350)
 
     st.altair_chart(chart, use_container_width=True)
 
-    # Performance Summary
-    st.subheader("Performance Summary")    
+    st.subheader("📊 Performance Summary")
     try:
-        q_return = (q_cum.iloc[-1] / q_cum.iloc[0] - 1) * 100
-        bh_return = (bh_cum.iloc[-1] / bh_cum.iloc[0] - 1) * 100
+        q_return = (q_cum.iloc[-1] / q_cum.iloc[0] - 1) * 100 if len(q_cum) > 1 else float("nan")
+        bh_return = (bh_cum.iloc[-1] / bh_cum.iloc[0] - 1) * 100 if len(bh_cum) > 1 else float("nan")
         st.markdown(f"""
         - **Deep Q-Learning Strategy Return:** {q_return:.2f}%  
         - **Buy & Hold Return:** {bh_return:.2f}%
         """)
-    except Exception:
-        st.warning("Could not compute return values.")
+    except Exception as e:
+        st.warning(f"Could not compute return values: {e}")
 
-    action_counts_test = {
+    st.write("Action Distribution (Test Set):")
+    st.write({
         "Long": int(np.sum(actions_test == 1)),
         "Short": int(np.sum(actions_test == -1)),
         "Neutral": int(np.sum(actions_test == 0))
-    }
-    st.write("Action Distribution (Test Set):")
-    st.write(action_counts_test)
+    })
