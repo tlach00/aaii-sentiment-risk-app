@@ -415,3 +415,27 @@ with tab7:
     }).set_index("Date")
 
     st.line_chart(result_df)
+
+    # Calculate performance
+    q_return = (portfolio[-1] / portfolio[0] - 1) * 100
+    bh_return = (bh[-1] / bh[0] - 1) * 100
+    
+    # Display performance summary
+    st.markdown("### 📊 Performance Summary (2016–2025)")
+    st.markdown(
+        f"- **Deep Q-Learning Strategy Return**: {q_return:.2f}%  \n"
+        f"- **Buy & Hold Return**: {bh_return:.2f}%"
+    )
+    
+    # Action distribution on test set
+    test_actions = np.array(test_actions)
+    long_count = np.sum(test_actions == 1)
+    short_count = np.sum(test_actions == -1)
+    neutral_count = np.sum(test_actions == 0)
+    
+    st.markdown("**Action Distribution (Test Set):**")
+    st.markdown(
+        f"- Long: {long_count}  \n"
+        f"- Short: {short_count}  \n"
+        f"- Neutral: {neutral_count}"
+    )
