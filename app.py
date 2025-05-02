@@ -24,11 +24,12 @@ def load_clean_data():
 raw_df = load_raw_excel()
 clean_df = load_clean_data()
 
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     ":file_folder: Raw Excel Viewer",
     ":chart_with_upwards_trend: Interactive Dashboard",
     ":bar_chart: Z-Score Strategy",
-    ":arrow_up_down: Momentum Strategy"
+    ":arrow_up_down: Momentum Strategy",
+    ":balance_scale: Weighted Allocation"
 ])
 
 # ---------------------------- TAB 1 ----------------------------------
@@ -193,5 +194,57 @@ with tab4:
     st.markdown(f"""
     ### 📊 Performance Summary
     - **Momentum Strategy Return:** {strat_ret:.2%}  
+    - **Buy & Hold Return:** {bh_ret:.2%}
+    """)
+
+# ---------------------------- TAB 5 ----------------------------------
+with tab5:
+    st.markdown("""
+    ### 📊 Weighted Allocation Strategy
+    This strategy allocates based on investor sentiment proportions.  
+    **Position = %Bullish - %Bearish**  
+    A rolling average smooths the sentiment inputs.
+    """)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        w_window = st.slider("Rolling Avg Window (weeks)", 1, 8, 2)
+    with col2:
+        capital_w = st.number_input("Initial Capital ($)", value=10000, step=1000)
+
+    df_w = clean_df.copy().set_index("Date")
+    df_w = df_w.dropna()
+
+    # Rolling averages for stability
+    df_w["Bull_Avg"] = df_w["Bullish"].rolling(window=w_window).mean()
+    df_w["Bear_Avg"] = df_w["Bearish"].rolling(window=w_window).mean()
+    df_w = df_w.dropna()
+
+    # Sentiment position: long if bullish dominates, short if bearish dominates
+    df_w["Weight"] = df_w["Bull_Avg"] - df_w["Bear_Avg"]
+    df_w["Return"] = df_w["Weight"] * df_w["SP500_Return"] / 100
+
+    # Cumulative strategies
+    df_w["BuyHold"] = (1 + df_w["SP500_Return"] / 100).cumprod() * capital_w
+    df_w["Weighted"] = (1 + df_w["Return"]).cumprod() * capital_w
+
+    # Line chart
+    chart = alt.Chart(df_w.reset_index()).transform_fold(
+        ["BuyHold", "Weighted"]
+    ).mark_line().encode(
+        x="Date:T",
+        y=alt.Y("value:Q", title="Portfolio Value ($)"),
+        color=alt.Color("key:N", title="Strategy")
+    ).properties(height=350)
+
+    st.altair_chart(chart, use_container_width=True)
+
+    # Performance metrics
+    w_ret = df_w["Weighted"].iloc[-1] / capital_w - 1
+    bh_ret = df_w["BuyHold"].iloc[-1] / capital_w - 1
+
+    st.markdown(f"""
+    #### 🧮 Performance Summary
+    - **Weighted Strategy Return:** {w_ret:.2%}  
     - **Buy & Hold Return:** {bh_ret:.2%}
     """)
