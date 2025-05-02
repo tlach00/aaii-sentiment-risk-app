@@ -1,102 +1,61 @@
-# app.py
+# sentiment_backtest.py
 
 import streamlit as st
 import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
-import datetime
-from sklearn.preprocessing import MinMaxScaler
 
-st.set_page_config(page_title="AAII Sentiment Risk App", layout="wide")
+st.set_page_config(page_title="Sentiment Strategy Backtest", layout="wide")
 
-st.title("\U0001F4CA AAII Sentiment & S&P 500 Dashboard")
+st.title("\U0001F4C8 Sentiment-Based Backtest Strategy")
 
 @st.cache_data
-def load_raw_excel():
-    return pd.read_excel("sentiment_data.xlsx", header=None)
 
-@st.cache_data
-def load_clean_data():
+def load_data():
     df = pd.read_excel("sentiment_data.xlsx", skiprows=7, usecols="A:D,M", header=None)
     df.columns = ["Date", "Bullish", "Neutral", "Bearish", "SP500_Close"]
-    df = df.dropna(subset=["Date", "Bullish", "Neutral", "Bearish", "SP500_Close"])
+    df.dropna(subset=["Date", "Bullish", "Bearish", "SP500_Close"], inplace=True)
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df = df.dropna(subset=["Date"])
-    df = df.sort_values("Date")
-    df["SP500_Return"] = df["SP500_Close"].pct_change() * 100
+    df.sort_values("Date", inplace=True)
+    df.dropna(subset=["Date"], inplace=True)
+    df["SP500_Return"] = df["SP500_Close"].pct_change()
+    df["Bull_Bear_Spread"] = (df["Bullish"] - df["Bearish"]) * 100  # convert to %
     return df.dropna()
 
-raw_df = load_raw_excel()
-clean_df = load_clean_data()
+df = load_data()
 
-tab1, tab2 = st.tabs([
-    "\U0001F5C2 Raw Excel Viewer",
-    "\U0001F4C8 Interactive Dashboard"
-])
+st.sidebar.header("Strategy Parameters")
+bull_threshold = st.sidebar.slider("Bullish Threshold (+%)", 0, 50, 20)
+bear_threshold = st.sidebar.slider("Bearish Threshold (-%)", -50, 0, -20)
+initial_capital = st.sidebar.number_input("Initial Capital ($)", 1000, 1000000, 10000, step=1000)
 
-# ---------------- TAB 1 ----------------
-with tab1:
-    st.header("\U0001F5C2 Raw AAII Sentiment Excel File")
-    st.dataframe(raw_df)
+# Signal logic
+df["Signal"] = 0
+df.loc[df["Bull_Bear_Spread"] > bull_threshold, "Signal"] = 1
+df.loc[df["Bull_Bear_Spread"] < bear_threshold, "Signal"] = -1
+df["Position"] = df["Signal"].replace(to_replace=0, method="ffill")
 
-# ---------------- TAB 2 ----------------
-with tab2:
-    st.header("\U0001F4C6 Select Time Range for Analysis")
+# Performance
 
-    min_date = clean_df["Date"].min().date()
-    max_date = clean_df["Date"].max().date()
+df["Market_Return"] = df["SP500_Close"].pct_change()
+df["Strategy_Return"] = df["Market_Return"] * df["Position"].shift(1)
+df.dropna(inplace=True)
+df["Market_Cum"] = initial_capital * (1 + df["Market_Return"]).cumprod()
+df["Strategy_Cum"] = initial_capital * (1 + df["Strategy_Return"]).cumprod()
 
-    start_date, end_date = st.slider("Select a date range:", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="YYYY-MM-DD")
-    start_date = pd.to_datetime(start_date)
-    end_date = pd.to_datetime(end_date)
-    filtered_df = clean_df[(clean_df["Date"] >= start_date) & (clean_df["Date"] <= end_date)]
+# Plot results
+fig, ax = plt.subplots(figsize=(10, 3))
+ax.plot(df["Date"], df["Market_Cum"], label="Buy & Hold", color="gray")
+ax.plot(df["Date"], df["Strategy_Cum"], label="Sentiment Strategy", color="green")
+ax.set_title("Cumulative Return")
+ax.legend()
+ax.grid(True, linestyle="--", alpha=0.5)
+st.pyplot(fig)
 
-    st.markdown("##### \U0001F4C9 S&P 500 Weekly Close (Log Scale)")
-    fig1, ax1 = plt.subplots(figsize=(10, 2))
-    ax1.plot(filtered_df["Date"], filtered_df["SP500_Close"], color="black", linewidth=0.8)
-    ax1.set_yscale("log")
-    ax1.set_ylabel("Price", fontsize=8)
-    ax1.tick_params(axis='both', labelsize=7)
-    ax1.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
-    st.pyplot(fig1)
+# Performance metrics
+strategy_total_return = df["Strategy_Cum"].iloc[-1] / initial_capital - 1
+market_total_return = df["Market_Cum"].iloc[-1] / initial_capital - 1
 
-    st.markdown("##### \U0001F9E0 Investor Sentiment (Toggle Lines)")
-    col1, col2, col3 = st.columns(3)
-    show_bullish = col1.checkbox("\U0001F402 Bullish", value=True)
-    show_neutral = col2.checkbox("☰ Neutral", value=True)
-    show_bearish = col3.checkbox("\U0001F43B Bearish", value=True)
-
-    fig2, ax2 = plt.subplots(figsize=(10, 2))
-    if show_bullish:
-        ax2.plot(filtered_df["Date"], filtered_df["Bullish"], label="Bullish", color="green", linewidth=0.8)
-    if show_neutral:
-        ax2.plot(filtered_df["Date"], filtered_df["Neutral"], label="Neutral", color="gray", linewidth=0.8)
-    if show_bearish:
-        ax2.plot(filtered_df["Date"], filtered_df["Bearish"], label="Bearish", color="red", linewidth=0.8)
-    ax2.set_ylabel("Sentiment (%)", fontsize=8)
-    ax2.tick_params(axis='both', labelsize=7)
-    ax2.legend(fontsize=7, loc="upper left", frameon=False)
-    ax2.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
-    st.pyplot(fig2)
-
-    st.markdown("##### \U0001F4C8 Bullish Sentiment Moving Average")
-    ma_window = st.slider("Select MA Window (weeks):", 1, 52, 4, key="tab2_ma")
-
-    df_ma = filtered_df.copy()
-    df_ma["Bullish_MA"] = df_ma["Bullish"].rolling(window=ma_window, min_periods=1).mean()
-
-    fig3, ax3 = plt.subplots(figsize=(10, 2))
-    ax3.plot(df_ma["Date"], df_ma["SP500_Close"], color="black", label="S&P 500", linewidth=0.8)
-    ax4 = ax3.twinx()
-    ax4.plot(df_ma["Date"], df_ma["Bullish_MA"], color="green", label=f"Bullish ({ma_window}-W MA)", linewidth=0.8)
-    ax3.set_ylabel("S&P 500 Price", fontsize=8, color="black")
-    ax4.set_ylabel("Bullish Sentiment (%)", fontsize=8, color="green")
-    ax3.tick_params(axis='both', labelsize=7, labelcolor="black")
-    ax4.tick_params(axis='both', labelsize=7, labelcolor="green")
-    ax3.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
-    lines1, labels1 = ax3.get_legend_handles_labels()
-    lines2, labels2 = ax4.get_legend_handles_labels()
-    ax3.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=7, frameon=False)
-    st.pyplot(fig3)
-
-    st.subheader("\U0001F4CB Filtered Data Table")
-    st.dataframe(filtered_df, use_container_width=True, height=400)
+st.markdown("### Performance Summary")
+st.write(f"**Strategy Return:** {strategy_total_return:.2%}")
+st.write(f"**Buy & Hold Return:** {market_total_return:.2%}")
