@@ -31,7 +31,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "🟥 Z-Score Spread Strategy",
     "📊 Weighted Allocation Strategy",
     "🧬 Multi-Factor Strategy",
-    "🤖 Q-Learning Strategy"
+    "🧠 Deep Q-Learning Strategy"
 ])
 
 # ---------------------------- TAB 1 ----------------------------------
