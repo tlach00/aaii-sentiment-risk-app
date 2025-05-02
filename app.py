@@ -24,12 +24,13 @@ def load_clean_data():
 raw_df = load_raw_excel()
 clean_df = load_clean_data()
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     ":file_folder: Raw Excel Viewer",
     ":chart_with_upwards_trend: Interactive Dashboard",
-    ":bar_chart: Z-Score Strategy",
-    ":arrow_up_down: Momentum Strategy",
-    ":balance_scale: Weighted Allocation"
+    "🧪 Z-Score Strategy Backtest",
+    "🟥 Z-Score Spread Strategy",
+    "📊 Weighted Allocation Strategy",
+    "🧬 Multi-Factor Strategy"
 ])
 
 # ---------------------------- TAB 1 ----------------------------------
@@ -236,5 +237,71 @@ with tab5:
     st.markdown(f"""
     #### 📈 Performance Summary
     - **Weighted Strategy Return (No Smoothing):** {strat_ret:.2%}  
+    - **Buy & Hold Return:** {bh_ret:.2%}
+    """)
+
+
+# ---------------------------- TAB 6 ----------------------------------
+with tab6:
+    st.markdown("### 🧬 Multi-Factor Strategy (Z-Score + Spread + Momentum)")
+
+    st.markdown("""
+    This strategy combines:
+    - Z-score of Bullish Sentiment  
+    - Bull-Bear Sentiment Spread  
+    - S&P 500 Momentum (4-week return)  
+    \nEach component is standardized and combined into a single signal.
+    If the signal > 0 → go long; else → go short.
+    """)
+
+    capital_mf = st.number_input("Initial Capital ($)", value=10000, step=1000, key="tab6_mf")
+
+    df_mf = clean_df.copy().set_index("Date")
+    df_mf = df_mf.dropna()
+    
+    # Momentum: 4-week return of S&P 500
+    df_mf["Momentum"] = df_mf["SP500_Close"].pct_change(4)
+
+    # Sentiment spread
+    df_mf["Spread"] = df_mf["Bullish"] - df_mf["Bearish"]
+
+    # Z-score of Bullish
+    z_window = 15
+    df_mf["Z_Bullish"] = (df_mf["Bullish"] - df_mf["Bullish"].rolling(z_window).mean()) / df_mf["Bullish"].rolling(z_window).std()
+
+    # Normalize each component to z-score
+    for col in ["Spread", "Momentum"]:
+        df_mf[f"Z_{col}"] = (df_mf[col] - df_mf[col].rolling(z_window).mean()) / df_mf[col].rolling(z_window).std()
+
+    df_mf = df_mf.dropna()
+
+    # Signal = linear combo of 3 z-scores
+    df_mf["Signal"] = df_mf["Z_Bullish"] + df_mf["Z_Spread"] + df_mf["Z_Momentum"]
+
+    # Directional position: +1 (long), -1 (short)
+    df_mf["Position"] = df_mf["Signal"].apply(lambda x: 1 if x > 0 else -1)
+
+    df_mf["SP500_Ret"] = df_mf["SP500_Return"] / 100
+    df_mf["Strat_Ret"] = df_mf["Position"].shift(1) * df_mf["SP500_Ret"]
+
+    df_mf["BuyHold"] = (1 + df_mf["SP500_Ret"]).cumprod() * capital_mf
+    df_mf["MultiFactor"] = (1 + df_mf["Strat_Ret"]).cumprod() * capital_mf
+
+    chart_mf = alt.Chart(df_mf.reset_index()).transform_fold([
+        "BuyHold", "MultiFactor"]
+    ).mark_line().encode(
+        x="Date:T",
+        y=alt.Y("value:Q", title="Portfolio Value ($)"),
+        color=alt.Color("key:N", title="Strategy")
+    ).properties(height=350)
+
+    st.altair_chart(chart_mf, use_container_width=True)
+
+    mf_ret = df_mf["MultiFactor"].iloc[-1] / capital_mf - 1
+    bh_ret = df_mf["BuyHold"].iloc[-1] / capital_mf - 1
+
+    st.markdown(f"""
+    #### 📈 Performance Summary
+    - **Multi-Factor Strategy Return:** {mf_ret:.2%}  
     - **Buy & Hold Return:** {bh_ret:.2%}
     """)
