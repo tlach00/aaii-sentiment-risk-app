@@ -199,52 +199,48 @@ with tab4:
 
 # ---------------------------- TAB 5 ----------------------------------
 with tab5:
+    st.markdown("### 📊 Weighted Allocation Strategy")
+
     st.markdown("""
-    ### 📊 Weighted Allocation Strategy
-    This strategy allocates based on investor sentiment proportions.  
-    **Position = %Bullish - %Bearish**  
-    A rolling average smooths the sentiment inputs.
+    Allocate positions based on the difference between bullish and bearish sentiment:  
+    \nPosition = Bullish% - Bearish%\n
+    This gives a weight from -1 to +1:
+    - If more bullish than bearish → long exposure
+    - If more bearish than bullish → short exposure
+
+    A rolling average is used to smooth noise in weekly sentiment changes.
     """)
 
     col1, col2 = st.columns(2)
     with col1:
-        w_window = st.slider("Rolling Avg Window (weeks)", 1, 8, 2)
+        weight_window = st.slider("Rolling Window (weeks)", 1, 12, 4)
     with col2:
-        capital_w = st.number_input("Initial Capital ($)", value=10000, step=1000)
+        capital_w = st.number_input("Initial Capital ($)", value=10000, step=1000, key="tab5_capital")
 
-    df_w = clean_df.copy().set_index("Date")
-    df_w = df_w.dropna()
+    df_weight = clean_df.copy().set_index("Date")
+    df_weight["Position"] = (df_weight["Bullish"] - df_weight["Bearish"]).rolling(window=weight_window).mean()
+    df_weight["SP500_Ret"] = df_weight["SP500_Return"] / 100
 
-    # Rolling averages for stability
-    df_w["Bull_Avg"] = df_w["Bullish"].rolling(window=w_window).mean()
-    df_w["Bear_Avg"] = df_w["Bearish"].rolling(window=w_window).mean()
-    df_w = df_w.dropna()
+    df_weight["Strategy_Ret"] = df_weight["Position"].shift(1) * df_weight["SP500_Ret"]
 
-    # Sentiment position: long if bullish dominates, short if bearish dominates
-    df_w["Weight"] = df_w["Bull_Avg"] - df_w["Bear_Avg"]
-    df_w["Return"] = df_w["Weight"] * df_w["SP500_Return"] / 100
+    df_weight["BuyHold"] = (1 + df_weight["SP500_Ret"]).cumprod() * capital_w
+    df_weight["Weighted"] = (1 + df_weight["Strategy_Ret"]).cumprod() * capital_w
 
-    # Cumulative strategies
-    df_w["BuyHold"] = (1 + df_w["SP500_Return"] / 100).cumprod() * capital_w
-    df_w["Weighted"] = (1 + df_w["Return"]).cumprod() * capital_w
-
-    # Line chart
-    chart = alt.Chart(df_w.reset_index()).transform_fold(
-        ["BuyHold", "Weighted"]
+    chart_w = alt.Chart(df_weight.reset_index()).transform_fold([
+        "BuyHold", "Weighted"]
     ).mark_line().encode(
         x="Date:T",
         y=alt.Y("value:Q", title="Portfolio Value ($)"),
         color=alt.Color("key:N", title="Strategy")
     ).properties(height=350)
 
-    st.altair_chart(chart, use_container_width=True)
+    st.altair_chart(chart_w, use_container_width=True)
 
-    # Performance metrics
-    w_ret = df_w["Weighted"].iloc[-1] / capital_w - 1
-    bh_ret = df_w["BuyHold"].iloc[-1] / capital_w - 1
+    strat_ret = df_weight["Weighted"].iloc[-1] / capital_w - 1
+    bh_ret = df_weight["BuyHold"].iloc[-1] / capital_w - 1
 
     st.markdown(f"""
-    #### 🧮 Performance Summary
-    - **Weighted Strategy Return:** {w_ret:.2%}  
+    #### 📈 Performance Summary
+    - **Weighted Strategy Return:** {strat_ret:.2%}  
     - **Buy & Hold Return:** {bh_ret:.2%}
     """)
