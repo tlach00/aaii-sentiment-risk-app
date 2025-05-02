@@ -310,60 +310,57 @@ with tab6:
 
 
 # ---------------------------- TAB 7 ----------------------------------
+# ---------------------------- TAB 7 ----------------------------------
 with tab7:
-    st.markdown("## \U0001F9E0 Deep Q-Learning Strategy")
     st.markdown("""
+    ### 🧠 Deep Q-Learning Strategy
     This strategy uses Deep Q-Learning to learn an optimal trading policy based on sentiment and price momentum.
 
-    - **State:** Continuous inputs — z-scores of bullish sentiment, bearish sentiment, bull-bear spread, 4-week price return, volatility, moving average, and lagged return  
-    - **Actions:** -1 (short), 0 (neutral), 1 (long)  
-    - **Reward:** Next week's return * action (reward shaping applied)  
-    - **Training Range:** Selectable  
+    - **State:** z-scores of bullish sentiment, bearish sentiment, bull-bear spread, 4-week price return, volatility, moving average, and lagged return
+    - **Actions:** -1 (short), 0 (neutral), 1 (long)
+    - **Reward:** Next week's return * action (reward shaping applied)
+    - **Training Range:** Selectable
     - **Testing Range:** Selectable
     """)
 
-    # Select Training Period
-    st.markdown("### \U0001F4C5 Training and Testing Period")
-    train_start_year = st.slider("Training Start Year", 1988, 2025, 2000)
-    train_end_year = st.slider("Training End Year", 1988, 2025, 2015)
+    # User-selectable training/testing range
+    st.subheader("📅 Training and Testing Period")
+    min_year = clean_df["Date"].dt.year.min()
+    max_year = clean_df["Date"].dt.year.max()
 
-    # Prepare Data
-    dql_df = clean_df.copy().set_index("Date")
-    dql_df = dql_df[['Bullish', 'Bearish', 'SP500_Close', 'SP500_Return']].dropna()
-    dql_df['Spread'] = dql_df['Bullish'] - dql_df['Bearish']
-    dql_df['Momentum'] = dql_df['SP500_Close'].pct_change(4)
-    dql_df['Volatility'] = dql_df['SP500_Return'].rolling(4).std()
-    dql_df['MA'] = dql_df['SP500_Close'].rolling(4).mean()
-    dql_df['LagRet'] = dql_df['SP500_Return'].shift(1)
+    col1, col2 = st.columns(2)
+    with col1:
+        train_start = st.slider("Training Start Year", min_value=min_year, max_value=max_year, value=2000)
+    with col2:
+        train_end = st.slider("Training End Year", min_value=train_start+1, max_value=max_year, value=2015)
 
-    # Z-Scores
-    for col in ['Bullish', 'Bearish', 'Spread', 'Momentum', 'Volatility', 'MA', 'LagRet']:
-        dql_df[f"Z_{col}"] = (dql_df[col] - dql_df[col].rolling(20).mean()) / dql_df[col].rolling(20).std()
+    df = clean_df.copy().set_index("Date")
+    df['Spread'] = df['Bullish'] - df['Bearish']
+    df['Momentum'] = df['SP500_Close'].pct_change(4)
+    df['Volatility'] = df['SP500_Close'].pct_change().rolling(4).std()
+    df['MA'] = df['SP500_Close'].rolling(4).mean()
+    df['Lagged'] = df['SP500_Close'].pct_change().shift(1)
 
-    dql_df = dql_df.dropna()
+    for col in ['Bullish', 'Bearish', 'Spread', 'Momentum', 'Volatility', 'MA', 'Lagged']:
+        df[f"Z_{col}"] = (df[col] - df[col].rolling(20).mean()) / df[col].rolling(20).std()
 
-    # Feature Matrix and Target
-    features = dql_df[[f"Z_{col}" for col in ['Bullish', 'Bearish', 'Spread', 'Momentum', 'Volatility', 'MA', 'LagRet']]].values
-    returns = dql_df['SP500_Return'].shift(-1).values / 100  # Next week return
+    df = df.dropna()
+    features = df[[f"Z_{col}" for col in ['Bullish', 'Bearish', 'Spread', 'Momentum', 'Volatility', 'MA', 'Lagged']]]
+    returns = df['SP500_Return'].shift(-1) / 100
 
-    # Split into train/test
-    dates = dql_df.index
-    train_idx = (dates.year >= train_start_year) & (dates.year <= train_end_year)
-    test_idx = (dates.year > train_end_year)
+    # Split
+    train_idx = (df.index.year >= train_start) & (df.index.year <= train_end)
+    test_idx = df.index > df.index[train_idx][-1]
 
-    X_train, y_train = features[train_idx], returns[train_idx]
-    X_test, y_test = features[test_idx], returns[test_idx]
+    X_train = features[train_idx].values
+    y_train = returns[train_idx].values
+    X_test = features[test_idx].values
+    y_test = returns[test_idx].values
 
-    # Clean up NaNs and Infs
+    # Filter valid (finite) values
     valid_train = np.isfinite(X_train).all(axis=1) & np.isfinite(y_train)
     X_train, y_train = X_train[valid_train], y_train[valid_train]
 
-    valid_test = np.isfinite(X_test).all(axis=1) & np.isfinite(y_test)
-    X_test, y_test = X_test[valid_test], y_test[valid_test]
-
-    actions = [-1, 0, 1]
-
-    # Q-Network
     class QNet(nn.Module):
         def __init__(self):
             super().__init__()
@@ -379,91 +376,82 @@ with tab7:
             return self.out(x)
 
     @st.cache_resource
-    def train_model():
+    def train_q_model(X_train, y_train, epochs=3, gamma=0.95):
         model = QNet()
-        optimizer = optim.Adam(model.parameters(), lr=0.001)
+        opt = optim.Adam(model.parameters(), lr=0.001)
         loss_fn = nn.MSELoss()
-        epsilon = 0.1
-        gamma = 0.95
-        epochs = 5
-
+        epsilon = 0.3
+        actions = [-1, 0, 1]
         action_count = {a: 0 for a in actions}
 
         for epoch in range(epochs):
             for i in range(len(X_train) - 1):
                 s = torch.tensor(X_train[i], dtype=torch.float32)
                 s_next = torch.tensor(X_train[i+1], dtype=torch.float32)
-                r = y_train[i] * (1 + abs(y_train[i]))  # reward shaping
+                r = y_train[i] * 100 - 0.2 * abs(y_train[i]) * 100  # reward shaping
+                Q_vals = model(s)
 
-                Q_pred = model(s)
                 if np.random.rand() < epsilon:
                     a = np.random.choice(actions)
                 else:
-                    a = actions[torch.argmax(Q_pred).item()]
+                    a = actions[torch.argmax(Q_vals).item()]
 
-                action_count[a] += 1
                 a_idx = actions.index(a)
+                action_count[a] += 1
 
-                Q_target = Q_pred.clone().detach()
+                Q_target = Q_vals.clone().detach()
                 Q_next = model(s_next).detach()
                 Q_target[a_idx] = r * a + gamma * Q_next.max().item()
 
-                loss = loss_fn(Q_pred, Q_target)
-                optimizer.zero_grad()
+                loss = loss_fn(Q_vals, Q_target)
+                opt.zero_grad()
                 loss.backward()
-                optimizer.step()
+                opt.step()
 
         return model, action_count
 
-    with st.spinner("Training model..."):
-        model, action_dist = train_model()
+    with st.spinner("Training Q-Network..."):
+        model, train_actions = train_q_model(X_train, y_train)
 
-    st.markdown("### \U0001F9E0 Training Action Distribution:")
-    st.json(action_dist)
+    st.markdown("#### 🧠 Training Action Distribution:")
+    st.json(train_actions)
 
-    # Evaluation
     portfolio = [10000]
     bh = [10000]
+    actions = [-1, 0, 1]
     test_actions = []
 
     for i in range(len(X_test)):
         s = torch.tensor(X_test[i], dtype=torch.float32)
-        Q_vals = model(s)
-        a_idx = torch.argmax(Q_vals).item()
+        Q = model(s)
+        a_idx = torch.argmax(Q).item()
         a = actions[a_idx]
         test_actions.append(a)
-
         r = y_test[i]
         portfolio.append(portfolio[-1] * (1 + a * r))
         bh.append(bh[-1] * (1 + r))
 
-    dql_dates = dql_df.index[test_idx][:len(portfolio)-1]
+    test_dates = df.index[test_idx]
     result_df = pd.DataFrame({
-        "Date": dql_dates,
+        "Date": test_dates,
         "Q_Portfolio": portfolio[1:],
         "BuyHold": bh[1:]
     })
 
     st.line_chart(result_df.set_index("Date"))
 
-    # Performance
-    if len(portfolio) > 1 and all(np.isfinite(portfolio)) and all(np.isfinite(bh)):
-        q_return = (portfolio[-1] / portfolio[0] - 1) * 100
-        bh_return = (bh[-1] / bh[0] - 1) * 100
-    else:
-        q_return = 0.0
-        bh_return = 0.0
+    q_return = (portfolio[-1] / portfolio[0] - 1) * 100
+    bh_return = (bh[-1] / bh[0] - 1) * 100
 
-    st.markdown("""
-    ### \U0001F4C8 Performance Summary
-    - **Deep Q-Learning Strategy Return:** {:.2f}%  
-    - **Buy & Hold Return:** {:.2f}%
-    
-    Action Distribution (Test Set):
-    - Long: {}  
-    - Short: {}  
-    - Neutral: {}
-    """.format(q_return, bh_return,
-               np.sum(np.array(test_actions)==1),
-               np.sum(np.array(test_actions)==-1),
-               np.sum(np.array(test_actions)==0)))
+    test_actions = np.array(test_actions)
+
+    st.subheader("📊 Performance Summary")
+    st.markdown(f"""
+    - **Deep Q-Learning Strategy Return:** {q_return:.2f}%  
+    - **Buy & Hold Return:** {bh_return:.2f}%
+
+    **Action Distribution (Test Set):**  
+    - Long: {np.sum(test_actions == 1)}  
+    - Short: {np.sum(test_actions == -1)}  
+    - Neutral: {np.sum(test_actions == 0)}
+    """)
