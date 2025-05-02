@@ -431,7 +431,7 @@ with tab7:
     st.altair_chart(chart, use_container_width=True)
 
     # Performance Summary
-    st.subheader("\ud83d\udcca Performance Summary")
+    st.subheader("Performance Summary")    
     try:
         q_return = (q_cum.iloc[-1] / q_cum.iloc[0] - 1) * 100
         bh_return = (bh_cum.iloc[-1] / bh_cum.iloc[0] - 1) * 100
