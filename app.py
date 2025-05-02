@@ -307,95 +307,96 @@ with tab6:
     - **Buy & Hold Return:** {bh_ret:.2%}
     """)
 
-
 # ---------------------------- TAB 7 ----------------------------------
-with tab7:
-    st.markdown("## 🤖 Sentiment Q-Learning Strategy")
 
+with tab7:
+    st.header("🤖 Sentiment Q-Learning Strategy")
     st.markdown("""
     This strategy uses Q-learning to learn an optimal trading policy based on sentiment and price momentum features.
     
-    - **States**: Discretized z-score of bullish/bearish sentiment, spread, and price momentum
-    - **Actions**: -1 (short), 0 (neutral), 1 (long)
-    - **Reward**: Next week's return * action
+    **States**: Discretized z-score of bullish/bearish sentiment, spread, and price momentum  
+    **Actions**: -1 (short), 0 (neutral), 1 (long)  
+    **Reward**: Next week's return * action
+    
+    **Training**: 1987 to 2014  
+    **Testing**: 2015 to 2025
     """)
 
-    # Prepare data
-    df_q = clean_df.copy().set_index("Date")
-    df_q = df_q.dropna()
-    df_q["Spread"] = df_q["Bullish"] - df_q["Bearish"]
-    df_q["Momentum"] = df_q["SP500_Close"].pct_change(4)
-    df_q["Z_Bullish"] = (df_q["Bullish"] - df_q["Bullish"].rolling(15).mean()) / df_q["Bullish"].rolling(15).std()
-    df_q["Z_Bearish"] = (df_q["Bearish"] - df_q["Bearish"].rolling(15).mean()) / df_q["Bearish"].rolling(15).std()
-    df_q = df_q.dropna()
+    # Parameters
+    bins = 5
+    gamma = 0.95
+    alpha = 0.1
+    episodes = 50
+    capital = 10000
 
-    # Define features
-    features = ["Z_Bullish", "Z_Bearish", "Spread", "Momentum"]
-    df_q = df_q[["SP500_Return"] + features]
-    df_q = df_q.dropna()
+    # Data Prep
+    df_rl = clean_df.copy().set_index("Date")
+    df_rl = df_rl[['Bullish', 'Bearish', 'SP500_Close', 'SP500_Return']].dropna()
 
-    # Discretize features into bins
-    for f in features:
-        df_q[f"bin_{f}"] = pd.qcut(df_q[f], q=4, labels=False, duplicates='drop')
+    df_rl['Spread'] = df_rl['Bullish'] - df_rl['Bearish']
+    df_rl['Momentum'] = df_rl['SP500_Close'].pct_change(4)
 
-    df_q["state"] = df_q[[f"bin_{f}" for f in features]].astype(str).agg("_".join, axis=1)
+    df_rl['Z_Bullish'] = (df_rl['Bullish'] - df_rl['Bullish'].rolling(15).mean()) / df_rl['Bullish'].rolling(15).std()
+    df_rl['Z_Bearish'] = (df_rl['Bearish'] - df_rl['Bearish'].rolling(15).mean()) / df_rl['Bearish'].rolling(15).std()
+    df_rl['Z_Spread'] = (df_rl['Spread'] - df_rl['Spread'].rolling(15).mean()) / df_rl['Spread'].rolling(15).std()
+    df_rl['Z_Momentum'] = (df_rl['Momentum'] - df_rl['Momentum'].rolling(15).mean()) / df_rl['Momentum'].rolling(15).std()
 
-    # Build state and action space
-    states = df_q["state"].unique()
+    df_rl = df_rl.dropna()
+
+    def discretize(series, bins):
+        return pd.qcut(series, bins, labels=False, duplicates='drop')
+
+    df_rl['s1'] = discretize(df_rl['Z_Bullish'], bins)
+    df_rl['s2'] = discretize(df_rl['Z_Bearish'], bins)
+    df_rl['s3'] = discretize(df_rl['Z_Spread'], bins)
+    df_rl['s4'] = discretize(df_rl['Z_Momentum'], bins)
+
+    df_rl['state'] = df_rl[['s1', 's2', 's3', 's4']].astype(str).agg('-'.join, axis=1)
+
+    # Train/test split
+    train_df = df_rl[df_rl.index < '2015-01-01']
+    test_df = df_rl[df_rl.index >= '2015-01-01']
+
+    q_table = {}
     actions = [-1, 0, 1]
 
-    # Initialize Q-table
-    import numpy as np
-    q_table = {s: {a: 0 for a in actions} for s in states}
-    alpha = 0.1
-    gamma = 0.95
-    
-    # Split train/test
-    split_date = pd.to_datetime("2016-01-01")
-    train_df = df_q[df_q.index < split_date]
-    test_df = df_q[df_q.index >= split_date]
+    for _ in range(episodes):
+        for i in range(len(train_df)-1):
+            s = train_df['state'].iloc[i]
+            a = np.random.choice(actions)
+            r = train_df['SP500_Return'].iloc[i+1]/100 * a
+            s_next = train_df['state'].iloc[i+1]
 
-    # Q-learning loop on training data
-    for t in range(len(train_df)-1):
-        row = train_df.iloc[t]
-        next_row = train_df.iloc[t+1]
-        state = row["state"]
-        next_state = next_row["state"]
-        reward = actions[0] * next_row["SP500_Return"] / 100  # worst-case init
-        
-        # Evaluate all possible actions
-        for a in actions:
-            reward = a * next_row["SP500_Return"] / 100
-            best_next = max(q_table[next_state].values())
-            q_table[state][a] += alpha * (reward + gamma * best_next - q_table[state][a])
+            if s not in q_table:
+                q_table[s] = {a_: 0 for a_ in actions}
+            if s_next not in q_table:
+                q_table[s_next] = {a_: 0 for a_ in actions}
 
-    # Use trained Q-table to simulate test performance
-    test_df = test_df.copy()
-    test_df["Action"] = test_df["state"].apply(lambda s: max(q_table.get(s, {0: 0}), key=q_table.get(s, {0: 0}).get))
-    test_df["Position"] = test_df["Action"].shift(1).fillna(0)
-    test_df["SP500_Ret"] = test_df["SP500_Return"] / 100
-    test_df["Strat_Ret"] = test_df["Position"] * test_df["SP500_Ret"]
+            best_next = max(q_table[s_next].values())
+            q_table[s][a] += alpha * (r + gamma * best_next - q_table[s][a])
 
-    initial_q = 10000
-    test_df["BuyHold"] = (1 + test_df["SP500_Ret"]).cumprod() * initial_q
-    test_df["QStrategy"] = (1 + test_df["Strat_Ret"]).cumprod() * initial_q
+    test_df['Q_Action'] = test_df['state'].map(lambda s: max(q_table.get(s, {0: 0}), key=q_table.get(s, {0: 0}).get))
+    test_df['BuyHold_Ret'] = test_df['SP500_Return'] / 100
+    test_df['Q_Ret'] = test_df['BuyHold_Ret'] * test_df['Q_Action'].shift(1).fillna(0)
 
-    chart_q = alt.Chart(test_df.reset_index()).transform_fold([
-        "BuyHold", "QStrategy"]
+    test_df['BuyHold_Portfolio'] = (1 + test_df['BuyHold_Ret']).cumprod() * capital
+    test_df['Q_Portfolio'] = (1 + test_df['Q_Ret']).cumprod() * capital
+
+    line = alt.Chart(test_df.reset_index()).transform_fold([
+        "BuyHold_Portfolio", "Q_Portfolio"]
     ).mark_line().encode(
         x="Date:T",
         y=alt.Y("value:Q", title="Portfolio Value ($)"),
         color=alt.Color("key:N", title="Strategy")
     ).properties(height=350)
 
-    st.altair_chart(chart_q, use_container_width=True)
+    st.altair_chart(line, use_container_width=True)
 
-    qret = test_df["QStrategy"].iloc[-1] / initial_q - 1
-    bhret = test_df["BuyHold"].iloc[-1] / initial_q - 1
+    q_ret = test_df['Q_Portfolio'].iloc[-1] / capital - 1
+    bh_ret = test_df['BuyHold_Portfolio'].iloc[-1] / capital - 1
 
     st.markdown(f"""
-    #### 🧮 Performance Summary (2016–2024)
-    - **Q-Learning Strategy Return**: {qret:.2%}  
-    - **Buy & Hold Return**: {bhret:.2%}
+    ### 🧾 Performance Summary (2015–2025)
+    - **Q-Learning Strategy Return**: {q_ret:.2%}  
+    - **Buy & Hold Return**: {bh_ret:.2%}
     """)
-
