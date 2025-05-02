@@ -431,10 +431,13 @@ This strategy uses Deep Q-Learning to learn an optimal trading policy based on s
     bh_return = (bh[-1] / bh[0] - 1) * 100
 
     st.subheader("📊 Performance Summary (2016–2024)")
-    st.markdown(f"""
+    st.markdown(
+    f"""### 📊 Performance Summary (2016–2024)
+
 - **Deep Q-learning Strategy Return**: {q_return:.2f}%  
 - **Buy & Hold Return**: {bh_return:.2f}%
-""")
+"""
+)
 
     test_actions = np.array(test_actions)
     st.markdown(f"""
