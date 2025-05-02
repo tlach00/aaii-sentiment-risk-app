@@ -321,6 +321,7 @@ with tab6:
 
 
 # ---------------------------- TAB 7 ----------------------------------
+# ---------------------------- TAB 7 ----------------------------------
 # 📌 Tab 7: Deep Q-Learning Strategy
 with tab7:
     st.markdown("""
@@ -335,18 +336,18 @@ with tab7:
     """)
 
     # Training and testing sliders
-    st.subheader("📆 Training and Testing Period")
-    min_year = int(df["Date"].dt.year.min())
-    max_year = int(df["Date"].dt.year.max())
+    st.subheader(":calendar: Training and Testing Period")
+    min_year = int(clean_df["Date"].dt.year.min())
+    max_year = int(clean_df["Date"].dt.year.max())
 
     col1, col2 = st.columns(2)
     with col1:
-        train_start = st.slider("Training Start Year", min_value=1987, max_value=max_year, value=2000)
+        train_start = st.slider("Training Start Year", min_value=1987, max_value=max_year - 1, value=2000)
     with col2:
         train_end = st.slider("Training End Year", min_value=train_start + 1, max_value=max_year, value=2015)
 
     # Filter data for training and testing
-    df_ml = df.copy()
+    df_ml = clean_df.copy()
     df_ml = df_ml[(df_ml['Date'].dt.year >= 1987)].dropna()
 
     # Compute features
@@ -398,7 +399,7 @@ with tab7:
     actions_test = np.clip(actions_test, -1, 1)
 
     # Show action counts
-    st.subheader("🧠 Training Action Distribution:")
+    st.subheader(":brain: Training Action Distribution:")
     action_counts_train = {
         "0": int(np.sum(y_train == 0)),
         "1": int(np.sum(y_train == 1)),
@@ -419,20 +420,18 @@ with tab7:
         'BuyHold': bh_cum
     }).replace([np.inf, -np.inf], np.nan).dropna()
 
-    chart = alt.Chart(df_plot).mark_line().encode(
+    chart = alt.Chart(df_plot).transform_fold([
+        "BuyHold", "Q_Learning"]
+    ).mark_line().encode(
         x='Date:T',
-        y=alt.Y('Q_Learning:Q', title='Portfolio Value'),
-        color=alt.value("#1f77b4")
-    ) + alt.Chart(df_plot).mark_line().encode(
-        x='Date:T',
-        y='BuyHold:Q',
-        color=alt.value("#aec7e8")
-    )
+        y=alt.Y('value:Q', title='Portfolio Value'),
+        color=alt.Color('key:N', title='Strategy')
+    ).properties(height=350)
 
     st.altair_chart(chart, use_container_width=True)
 
     # Performance Summary
-    st.subheader("📊 Performance Summary")
+    st.subheader("\ud83d\udcca Performance Summary")
     try:
         q_return = (q_cum.iloc[-1] / q_cum.iloc[0] - 1) * 100
         bh_return = (bh_cum.iloc[-1] / bh_cum.iloc[0] - 1) * 100
