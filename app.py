@@ -1,145 +1,82 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import datetime
-from sklearn.preprocessing import MinMaxScaler
+import numpy as np
+import math
+from datetime import datetime
 
-st.set_page_config(page_title="AAII Sentiment Risk App", layout="wide")
-st.title("\U0001F4CA AAII Sentiment & S&P 500 Dashboard")
+st.set_page_config(
+    page_title="Sentiment Strategy Dashboard",
+    page_icon=":chart_with_upwards_trend:",
+    layout="wide"
+)
+
+st.title(":chart_with_upwards_trend: Sentiment vs S&P 500 Strategy")
 
 @st.cache_data
-def load_raw_excel():
-    return pd.read_excel("sentiment_data.xlsx", header=None)
 
-@st.cache_data
-def load_clean_data():
+def load_data():
     df = pd.read_excel("sentiment_data.xlsx", skiprows=7, usecols="A:D,M", header=None)
     df.columns = ["Date", "Bullish", "Neutral", "Bearish", "SP500_Close"]
-    df = df.dropna(subset=["Date", "Bullish", "Neutral", "Bearish", "SP500_Close"])
+    df = df.dropna()
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df = df.dropna(subset=["Date"])
-    df = df.sort_values("Date")
-    df["SP500_Return"] = df["SP500_Close"].pct_change() * 100
+    df = df.set_index("Date").resample("D").ffill().dropna().copy()
+    df["SP500_Return"] = df["SP500_Close"].pct_change()
+    df["Sentiment"] = df["Bullish"]
     return df.dropna()
 
-raw_df = load_raw_excel()
-clean_df = load_clean_data()
+df = load_data()
 
-tab1, tab2, tab3 = st.tabs([
-    "\U0001F5C2 Raw Excel Viewer",
-    "\U0001F4C8 Interactive Dashboard",
-    "\U0001F4C9 Sentiment-Based Backtest Strategy"
-])
+st.sidebar.header("Strategy Parameters")
+rolling_window = st.sidebar.slider("Rolling Window (days)", 5, 60, 20, step=5)
+initial_capital = st.sidebar.number_input("Initial Capital ($)", 1000, 1000000, 10000, step=1000)
 
-# TAB 1 - Raw Excel Viewer
-with tab1:
-    st.header("\U0001F5C2 Raw AAII Sentiment Excel File")
-    st.dataframe(raw_df)
+# Compute rolling z-scores
+df["Z_Sentiment"] = (df["Sentiment"] - df["Sentiment"].rolling(window=rolling_window).mean()) / df["Sentiment"].rolling(window=rolling_window).std()
+df["Z_Price"] = (df["SP500_Close"] - df["SP500_Close"].rolling(window=rolling_window).mean()) / df["SP500_Close"].rolling(window=rolling_window).std()
 
-# TAB 2 - Interactive Dashboard
-with tab2:
-    st.header("\U0001F4C6 Select Time Range for Analysis")
-    min_date = clean_df["Date"].min().date()
-    max_date = clean_df["Date"].max().date()
-    start_date, end_date = st.slider("Select a date range:", min_value=min_date, max_value=max_date, value=(min_date, max_date), format="YYYY-MM-DD")
-    start_date = pd.to_datetime(start_date)
-    end_date = pd.to_datetime(end_date)
-    filtered_df = clean_df[(clean_df["Date"] >= start_date) & (clean_df["Date"] <= end_date)]
+# Generate signals
+df["Signal"] = 0
+df.loc[df["Z_Sentiment"] > df["Z_Price"], "Signal"] = 1
+df.loc[df["Z_Sentiment"] < df["Z_Price"], "Signal"] = -1
+df["Position"] = df["Signal"].shift(1).fillna(0)
 
-    st.markdown("##### \U0001F4C9 S&P 500 Weekly Close (Log Scale)")
-    fig1, ax1 = plt.subplots(figsize=(10, 2))
-    ax1.plot(filtered_df["Date"], filtered_df["SP500_Close"], color="black", linewidth=0.8)
-    ax1.set_yscale("log")
-    ax1.set_ylabel("Price", fontsize=8)
-    ax1.tick_params(axis='both', labelsize=7)
-    ax1.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
-    st.pyplot(fig1)
+# Returns
+df["Strategy_Return"] = df["SP500_Return"] * df["Position"]
+df = df.dropna()
+df["BuyHold"] = initial_capital * (1 + df["SP500_Return"]).cumprod()
+df["Strategy"] = initial_capital * (1 + df["Strategy_Return"]).cumprod()
 
-    st.markdown("##### \U0001F9E0 Investor Sentiment (Toggle Lines)")
-    col1, col2, col3 = st.columns(3)
-    show_bullish = col1.checkbox("\U0001F402 Bullish", value=True)
-    show_neutral = col2.checkbox("\u2630 Neutral", value=True)
-    show_bearish = col3.checkbox("\U0001F43B Bearish", value=True)
+# Time range slider
+from_date, to_date = st.slider(
+    "Select date range",
+    min_value=df.index.min().date(),
+    max_value=df.index.max().date(),
+    value=(df.index.min().date(), df.index.max().date()),
+    format="YYYY-MM-DD"
+)
+df_filtered = df[(df.index.date >= from_date) & (df.index.date <= to_date)]
 
-    fig2, ax2 = plt.subplots(figsize=(10, 2))
-    if show_bullish:
-        ax2.plot(filtered_df["Date"], filtered_df["Bullish"], label="Bullish", color="green", linewidth=0.8)
-    if show_neutral:
-        ax2.plot(filtered_df["Date"], filtered_df["Neutral"], label="Neutral", color="gray", linewidth=0.8)
-    if show_bearish:
-        ax2.plot(filtered_df["Date"], filtered_df["Bearish"], label="Bearish", color="red", linewidth=0.8)
-    ax2.set_ylabel("Sentiment (%)", fontsize=8)
-    ax2.tick_params(axis='both', labelsize=7)
-    ax2.legend(fontsize=7, loc="upper left", frameon=False)
-    ax2.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
-    st.pyplot(fig2)
+st.header("Portfolio Growth", divider="gray")
+st.line_chart(df_filtered[["Strategy", "BuyHold"]])
 
-    st.markdown("##### \U0001F4C8 Bullish Sentiment Moving Average")
-    ma_window = st.slider("Select MA Window (weeks):", 1, 52, 4, key="tab2_ma")
-    df_ma = filtered_df.copy()
-    df_ma["Bullish_MA"] = df_ma["Bullish"].rolling(window=ma_window, min_periods=1).mean()
+# Metrics block
+st.header(f"Performance Summary as of {to_date}", divider="gray")
+latest = df_filtered.iloc[-1]
+start = df_filtered.iloc[0]
 
-    fig3, ax3 = plt.subplots(figsize=(10, 2))
-    ax3.plot(df_ma["Date"], df_ma["SP500_Close"], color="black", label="S&P 500", linewidth=0.8)
-    ax4 = ax3.twinx()
-    ax4.plot(df_ma["Date"], df_ma["Bullish_MA"], color="green", label=f"Bullish ({ma_window}-W MA)", linewidth=0.8)
-    ax3.set_ylabel("S&P 500 Price", fontsize=8, color="black")
-    ax4.set_ylabel("Bullish Sentiment (%)", fontsize=8, color="green")
-    ax3.tick_params(axis='both', labelsize=7, labelcolor="black")
-    ax4.tick_params(axis='both', labelsize=7, labelcolor="green")
-    ax3.grid(True, linestyle="--", linewidth=0.25, alpha=0.5)
-    lines1, labels1 = ax3.get_legend_handles_labels()
-    lines2, labels2 = ax4.get_legend_handles_labels()
-    ax3.legend(lines1 + lines2, labels1 + labels2, loc="upper left", fontsize=7, frameon=False)
-    st.pyplot(fig3)
+strat_return = latest["Strategy"] / start["Strategy"] - 1
+bh_return = latest["BuyHold"] / start["BuyHold"] - 1
 
-    st.subheader("\U0001F4CB Filtered Data Table")
-    st.dataframe(filtered_df, use_container_width=True, height=400)
+cols = st.columns(2)
 
-# TAB 3 - Placeholder for future strategy implementation
-with tab3:
-    st.header("📈 Sentiment-Based Backtest Strategy (Z-Score Method)")
+with cols[0]:
+    st.metric("Strategy Return", f"{latest['Strategy']:,.0f} $", delta=f"{strat_return:.2%}")
 
-    st.sidebar.markdown("### Strategy Parameters")
-    rolling_window = st.sidebar.slider("Rolling Window (days)", min_value=5, max_value=60, value=20, step=5)
-    initial_capital = st.sidebar.number_input("Initial Capital ($)", min_value=1000, value=10000, step=1000)
+with cols[1]:
+    st.metric("Buy & Hold Return", f"{latest['BuyHold']:,.0f} $", delta=f"{bh_return:.2%}")
 
-    # Prepare daily data by forward-filling weekly values
-    df = clean_df.copy()
-    df = df.set_index("Date").resample('D').ffill().dropna().copy()
-    df["SP500_Return"] = df["SP500_Close"].pct_change()
-    df["Sentiment"] = df["Bullish"]  # You can switch to Bull-Bear Spread here if preferred
+st.header("Z-Score Inputs", divider="gray")
+st.line_chart(df_filtered[["Z_Sentiment", "Z_Price"]])
 
-    # Compute rolling Z-scores
-    df["Z_Sentiment"] = (df["Sentiment"] - df["Sentiment"].rolling(window=rolling_window).mean()) / df["Sentiment"].rolling(window=rolling_window).std()
-    df["Z_Price"] = (df["SP500_Close"] - df["SP500_Close"].rolling(window=rolling_window).mean()) / df["SP500_Close"].rolling(window=rolling_window).std()
-
-    # Generate signals based on Z-Score comparison
-    df["Signal"] = 0
-    df.loc[df["Z_Sentiment"] > df["Z_Price"], "Signal"] = 1   # Long when sentiment stronger
-    df.loc[df["Z_Sentiment"] < df["Z_Price"], "Signal"] = -1  # Short when price leads
-    df["Position"] = df["Signal"].shift(1).fillna(0)
-
-    # Compute returns
-    df["Strategy_Return"] = df["SP500_Return"] * df["Position"]
-    df = df.dropna()
-    df["BuyHold"] = initial_capital * (1 + df["SP500_Return"]).cumprod()
-    df["Strategy"] = initial_capital * (1 + df["Strategy_Return"]).cumprod()
-
-    # Plot performance
-    st.subheader("Cumulative Return")
-    fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(df.index, df["BuyHold"], label="Buy & Hold", color="gray", linewidth=1.2)
-    ax.plot(df.index, df["Strategy"], label="Z-Score Sentiment Strategy", color="blue", linewidth=1.2)
-    ax.set_ylabel("Portfolio Value ($)")
-    ax.legend()
-    ax.grid(True, linestyle="--", alpha=0.4)
-    st.pyplot(fig)
-
-    # Performance summary
-    total_return_strategy = df["Strategy"].iloc[-1] / initial_capital - 1
-    total_return_bh = df["BuyHold"].iloc[-1] / initial_capital - 1
-    st.subheader("Performance Summary")
-    st.write(f"**Strategy Return**: {total_return_strategy:.2%}")
-    st.write(f"**Buy & Hold Return**: {total_return_bh:.2%}")
-
+st.header("Signal Positioning", divider="gray")
+st.line_chart(df_filtered[["Position"]])
