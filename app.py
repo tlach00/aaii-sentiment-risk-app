@@ -310,23 +310,21 @@ with tab6:
 
 
 # ---------------------------- TAB 7 ----------------------------------
+# ---------------------------- TAB 7 ----------------------------------
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import json
 
 with tab7:
     st.header("🧠 Deep Q-Learning Strategy")
-    st.markdown("""
-This strategy uses Deep Q-Learning to learn an optimal trading policy based on sentiment and price momentum.
-
-- **State:** Continuous inputs - z-scores of bullish sentiment, bearish sentiment, bull-bear spread, and 4-week price return  
-- **Actions:** -1 (short), 0 (neutral), 1 (long)  
-- **Reward:** Next week return * action  
-- **Training:** 2010 to 2015  
-- **Testing:** 2016 to 2025
-""")
+    st.markdown(
+        "- State: z-scores of bullish sentiment, bearish sentiment, bull-bear spread, and 4-week price return\n"
+        "- Actions: -1 (short), 0 (neutral), 1 (long)\n"
+        "- Reward: next week return * action\n"
+        "- Training: 2010 to 2015\n"
+        "- Testing: 2016 to 2025"
+    )
 
     # Prepare data
     dql_df = clean_df.copy().set_index("Date")
@@ -334,7 +332,6 @@ This strategy uses Deep Q-Learning to learn an optimal trading policy based on s
     dql_df['Spread'] = dql_df['Bullish'] - dql_df['Bearish']
     dql_df['Momentum'] = dql_df['SP500_Close'].pct_change(4)
 
-    # Z-scores
     for col in ['Bullish', 'Bearish', 'Spread', 'Momentum']:
         dql_df[f"Z_{col}"] = (dql_df[col] - dql_df[col].rolling(20).mean()) / dql_df[col].rolling(20).std()
 
@@ -343,15 +340,12 @@ This strategy uses Deep Q-Learning to learn an optimal trading policy based on s
     returns = dql_df['SP500_Return'].shift(-1).values / 100  # Next week's return
 
     actions = [-1, 0, 1]
-
-    # Split
     split_date = pd.to_datetime("2016-01-01")
     train_idx = dql_df.index < split_date
     test_idx = dql_df.index >= split_date
 
     X_train = features[train_idx]
     y_train = returns[train_idx]
-
     X_test = features[test_idx]
     y_test = returns[test_idx]
 
@@ -367,14 +361,11 @@ This strategy uses Deep Q-Learning to learn an optimal trading policy based on s
             x = torch.relu(self.fc2(x))
             return self.out(x)
 
-    @st.cache_resource
     def train_dql_model(X_train, y_train, epochs=5, gamma=0.95):
         model = QNet()
         optimizer = optim.Adam(model.parameters(), lr=0.001)
         loss_fn = nn.MSELoss()
         epsilon = 0.2
-
-        action_count = {a: 0 for a in actions}
 
         for epoch in range(epochs):
             for i in range(len(X_train) - 1):
@@ -383,13 +374,10 @@ This strategy uses Deep Q-Learning to learn an optimal trading policy based on s
                 r = y_train[i]
 
                 Q_pred = model(s)
-
                 if np.random.rand() < epsilon:
                     a = np.random.choice(actions)
                 else:
                     a = actions[torch.argmax(Q_pred).item()]
-
-                action_count[a] += 1
                 a_idx = actions.index(a)
 
                 Q_target = Q_pred.clone().detach()
@@ -401,26 +389,19 @@ This strategy uses Deep Q-Learning to learn an optimal trading policy based on s
                 loss.backward()
                 optimizer.step()
 
-        return model, action_count
+        return model
 
-    with st.spinner("Training Deep Q-Network..."):
-        q_model, train_actions = train_dql_model(X_train, y_train)
+    with st.spinner("Training Q-learning agent..."):
+        q_model = train_dql_model(X_train, y_train)
 
-    st.markdown("#### 🧠 Training Action Distribution:")
-    st.json(train_actions)
-
-    # Evaluate on test set
+    # Run on test set
     portfolio = [10000]
     bh = [10000]
-    test_actions = []
-
     for i in range(len(X_test)):
         s = torch.tensor(X_test[i], dtype=torch.float32)
         Q_vals = q_model(s)
         a_idx = torch.argmax(Q_vals).item()
         a = actions[a_idx]
-        test_actions.append(a)
-
         r = y_test[i]
         portfolio.append(portfolio[-1] * (1 + a * r))
         bh.append(bh[-1] * (1 + r))
@@ -433,20 +414,3 @@ This strategy uses Deep Q-Learning to learn an optimal trading policy based on s
     })
 
     st.line_chart(result_df.set_index("Date"), use_container_width=True)
-
-    q_return = (portfolio[-1] / portfolio[0] - 1) * 100
-    bh_return = (bh[-1] / bh[0] - 1) * 100
-
-    st.subheader("📊 Performance Summary (2016–2024)")
-    st.markdown(
-        f"- **Deep Q-learning Strategy Return**: {q_return:.2f}%  \n"
-        f"- **Buy & Hold Return**: {bh_return:.2f}%"
-    )
-
-    test_actions = np.array(test_actions)
-    st.markdown(
-        f"**Action Distribution (Test Set):**  \n"
-        f"- Long: {np.sum(test_actions == 1)}  \n"
-        f"- Short: {np.sum(test_actions == -1)}  \n"
-        f"- Neutral: {np.sum(test_actions == 0)}"
-    )
