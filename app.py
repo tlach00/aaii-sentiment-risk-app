@@ -146,3 +146,49 @@ with tab3:
     - **Z-Score Strategy Return:** {strat_ret:.2%}  
     - **Buy & Hold Return:** {bh_ret:.2%}
     """)
+# ---------------------------- TAB 4 ----------------------------------
+
+with tab4:
+    st.header("📊 Sentiment Momentum Strategy")
+    st.markdown("""
+    This strategy compares a short-term and long-term moving average of **bullish sentiment**.
+    - If **short MA > long MA** → bullish momentum → go long
+    - If **short MA < long MA** → bearish shift → go short
+    """)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        short_ma = st.slider("Short-term MA (weeks)", 2, 20, 4)
+    with col2:
+        long_ma = st.slider("Long-term MA (weeks)", 10, 52, 26)
+
+    momentum_df = clean_df.copy().set_index("Date").dropna()
+    momentum_df["Bull_MA_short"] = momentum_df["Bullish"].rolling(window=short_ma).mean()
+    momentum_df["Bull_MA_long"] = momentum_df["Bullish"].rolling(window=long_ma).mean()
+
+    momentum_df = momentum_df.dropna()
+    momentum_df["Signal"] = (momentum_df["Bull_MA_short"] > momentum_df["Bull_MA_long"]).astype(int) * 2 - 1
+    momentum_df["Position"] = momentum_df["Signal"].shift(1).fillna(0)
+    momentum_df["SP500_Ret"] = momentum_df["SP500_Return"] / 100
+    momentum_df["Strat_Ret"] = momentum_df["Position"] * momentum_df["SP500_Ret"]
+    momentum_df["BuyHold"] = (1 + momentum_df["SP500_Ret"]).cumprod()
+    momentum_df["Momentum"] = (1 + momentum_df["Strat_Ret"]).cumprod()
+
+    chart = alt.Chart(momentum_df.reset_index()).transform_fold([
+        "BuyHold", "Momentum"]
+    ).mark_line().encode(
+        x="Date:T",
+        y=alt.Y("value:Q", title="Portfolio Value (normalized)"),
+        color=alt.Color("key:N", title="Strategy")
+    ).properties(height=350)
+
+    st.altair_chart(chart, use_container_width=True)
+
+    mret = momentum_df["Momentum"].iloc[-1] - 1
+    bret = momentum_df["BuyHold"].iloc[-1] - 1
+
+    st.markdown(f"""
+    #### 📈 Performance Summary
+    - **Momentum Strategy Return:** {mret:.2%}  
+    - **Buy & Hold Return:** {bret:.2%}
+    """)
