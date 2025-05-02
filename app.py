@@ -307,10 +307,6 @@ with tab6:
     - **Buy & Hold Return:** {bh_ret:.2%}
     """)
 # ---------------------------- TAB 7 ----------------------------------
-import torch
-import torch.nn as nn
-import torch.optim as optim
-
 with tab7:
     st.header("🧠 Deep Q-Learning Strategy")
     st.markdown("""
@@ -324,28 +320,35 @@ with tab7:
     """)
 
     import numpy as np
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
 
     dql_df = clean_df.copy().set_index("Date")
+    dql_df = dql_df[['Bullish', 'Bearish', 'SP500_Close', 'SP500_Return']].dropna()
+
     dql_df['Spread'] = dql_df['Bullish'] - dql_df['Bearish']
     dql_df['Momentum'] = dql_df['SP500_Close'].pct_change(4)
 
     for col in ['Bullish', 'Bearish', 'Spread', 'Momentum']:
         dql_df[f"Z_{col}"] = (dql_df[col] - dql_df[col].rolling(20).mean()) / dql_df[col].rolling(20).std()
 
-    dql_df['Next_Return'] = dql_df['SP500_Return'].shift(-1) / 100
     dql_df = dql_df.dropna()
 
+    features = dql_df[["Z_Bullish", "Z_Bearish", "Z_Spread", "Z_Momentum"]].values
+    returns = dql_df['SP500_Return'].shift(-1).values / 100
+
     actions = [-1, 0, 1]
-    features = ['Z_Bullish', 'Z_Bearish', 'Z_Spread', 'Z_Momentum']
+    split_train = pd.to_datetime("2016-01-01")
+    split_test = pd.to_datetime("2025-01-01")
 
-    train_df = dql_df[(dql_df.index >= '2010-01-01') & (dql_df.index < '2016-01-01')].copy()
-    test_df = dql_df[dql_df.index >= '2016-01-01'].copy()
+    train_idx = (dql_df.index < split_train)
+    test_idx = (dql_df.index >= split_train) & (dql_df.index <= split_test)
 
-    X_train = train_df[features].values.astype(np.float32)
-    y_train = train_df['Next_Return'].values.astype(np.float32)
-
-    X_test = test_df[features].values.astype(np.float32)
-    y_test = test_df['Next_Return'].values.astype(np.float32)
+    X_train = features[train_idx]
+    y_train = returns[train_idx]
+    X_test = features[test_idx]
+    y_test = returns[test_idx]
 
     class QNet(nn.Module):
         def __init__(self):
@@ -360,26 +363,27 @@ with tab7:
             return self.out(x)
 
     @st.cache_resource
-    def train_dql_model(X_train, y_train, epochs=20):
+    def train_dql_model(X_train, y_train, epochs=20, gamma=0.95):
         model = QNet()
         optimizer = optim.Adam(model.parameters(), lr=0.001)
         loss_fn = nn.MSELoss()
-        gamma = 0.9
         epsilon = 0.1
 
         for epoch in range(epochs):
             for i in range(len(X_train) - 1):
                 s = torch.tensor(X_train[i], dtype=torch.float32)
-                a_idx = np.random.choice(len(actions))
-                a = actions[a_idx]
-                reward = y_train[i] * a
-
                 s_next = torch.tensor(X_train[i + 1], dtype=torch.float32)
-                q_pred = model(s)
-                q_target = q_pred.clone().detach()
-                q_target[a_idx] = reward + gamma * model(s_next).max().item()
+                Q_pred = model(s)
+                a_idx = np.random.choice([0, 1, 2]) if np.random.rand() < epsilon else torch.argmax(Q_pred).item()
+                a = actions[a_idx]
+                r = y_train[i] * a
 
-                loss = loss_fn(q_pred, q_target)
+                with torch.no_grad():
+                    Q_next = model(s_next).max().item()
+                    q_target = Q_pred.clone()
+                    q_target[a_idx] = r + gamma * Q_next
+
+                loss = loss_fn(Q_pred, q_target)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -394,38 +398,32 @@ with tab7:
     test_actions = []
 
     for i in range(len(X_test)):
-        s = torch.tensor(X_test[i], dtype=torch.float32)
-        a_idx = torch.argmax(q_model(s)).item()
-        a = actions[a_idx]
-        r = y_test[i]
-        test_actions.append(a)
+        state = torch.tensor(X_test[i], dtype=torch.float32)
+        Q_vals = q_model(state)
+        action_idx = torch.argmax(Q_vals).item()
+        action = actions[action_idx]
+        test_actions.append(action)
 
-        portfolio.append(portfolio[-1] * (1 + a * r))
+        r = y_test[i]
+        portfolio.append(portfolio[-1] * (1 + action * r))
         bh.append(bh[-1] * (1 + r))
 
+    dql_dates = dql_df.index[test_idx]
     result_df = pd.DataFrame({
-        "Date": test_df.index,
+        "Date": dql_dates,
         "Q_Portfolio": portfolio[1:],
         "BuyHold": bh[1:]
     })
 
-    chart_dql = alt.Chart(result_df).transform_fold(
-        ["Q_Portfolio", "BuyHold"]
-    ).mark_line().encode(
-        x="Date:T",
-        y=alt.Y("value:Q", title="Portfolio Value ($)"),
-        color=alt.Color("key:N", title="Strategy")
-    ).properties(height=350)
+    st.line_chart(result_df.set_index("Date"), use_container_width=True)
 
-    st.altair_chart(chart_dql, use_container_width=True)
-
-    q_return = result_df["Q_Portfolio"].iloc[-1] / portfolio[0] - 1
-    bh_return = result_df["BuyHold"].iloc[-1] / bh[0] - 1
+    q_return = (portfolio[-1] / portfolio[0] - 1) * 100
+    bh_return = (bh[-1] / bh[0] - 1) * 100
 
     st.subheader("🧾 Performance Summary (2016–2024)")
     st.markdown(f"""
-    - **Deep Q-Learning Strategy Return**: {q_return:.2%}  
-    - **Buy & Hold Return**: {bh_return:.2%}
+    - **Deep Q-Learning Strategy Return**: {q_return:.2f}%  
+    - **Buy & Hold Return**: {bh_return:.2f}%
     """)
 
     test_actions = np.array(test_actions)
