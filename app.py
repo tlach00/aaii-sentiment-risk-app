@@ -306,6 +306,8 @@ with tab6:
     - **Multi-Factor Strategy Return:** {mf_ret:.2%}  
     - **Buy & Hold Return:** {bh_ret:.2%}
 
+# ---------------------------- TAB 7 ----------------------------------
+
 import numpy as np
 import torch
 import torch.nn as nn
