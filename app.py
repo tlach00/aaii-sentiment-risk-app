@@ -311,35 +311,25 @@ with tab6:
 
 
 # ---------------------------- TAB 7 ----------------------------------
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.optim as optim
-
 with tab7:
     st.header("🧠 Deep Q-Learning Strategy")
-    st.markdown(
-        "- State: z-scores of bullish sentiment, bearish sentiment, bull-bear spread, and 4-week price return\n"
-        "- Actions: -1 (short), 0 (neutral), 1 (long)\n"
-        "- Reward: next week return * action\n"
-        "- Training: 2010 to 2015\n"
-        "- Testing: 2016 to 2025"
-    )
+
+    import numpy as np
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
 
     # Prepare data
     dql_df = clean_df.copy().set_index("Date")
-    dql_df = dql_df[['Bullish', 'Bearish', 'SP500_Close', 'SP500_Return']].dropna()
     dql_df['Spread'] = dql_df['Bullish'] - dql_df['Bearish']
     dql_df['Momentum'] = dql_df['SP500_Close'].pct_change(4)
-
     for col in ['Bullish', 'Bearish', 'Spread', 'Momentum']:
         dql_df[f"Z_{col}"] = (dql_df[col] - dql_df[col].rolling(20).mean()) / dql_df[col].rolling(20).std()
-
     dql_df = dql_df.dropna()
-    features = dql_df[["Z_Bullish", "Z_Bearish", "Z_Spread", "Z_Momentum"]].values
-    returns = dql_df['SP500_Return'].shift(-1).values / 100  # Next week's return
 
-    actions = [-1, 0, 1]
+    features = dql_df[["Z_Bullish", "Z_Bearish", "Z_Spread", "Z_Momentum"]].values
+    returns = dql_df["SP500_Return"].shift(-1).values / 100
+
     split_date = pd.to_datetime("2016-01-01")
     train_idx = dql_df.index < split_date
     test_idx = dql_df.index >= split_date
@@ -348,6 +338,8 @@ with tab7:
     y_train = returns[train_idx]
     X_test = features[test_idx]
     y_test = returns[test_idx]
+
+    actions = [-1, 0, 1]
 
     class QNet(nn.Module):
         def __init__(self):
@@ -361,11 +353,13 @@ with tab7:
             x = torch.relu(self.fc2(x))
             return self.out(x)
 
-    def train_dql_model(X_train, y_train, epochs=5, gamma=0.95):
+    @st.cache_resource
+    def train_q_model(X_train, y_train, gamma=0.95, epochs=5):
         model = QNet()
-        optimizer = optim.Adam(model.parameters(), lr=0.001)
+        opt = optim.Adam(model.parameters(), lr=0.001)
         loss_fn = nn.MSELoss()
-        epsilon = 0.2
+        eps = 0.2
+        act_count = {a: 0 for a in actions}
 
         for epoch in range(epochs):
             for i in range(len(X_train) - 1):
@@ -374,10 +368,13 @@ with tab7:
                 r = y_train[i]
 
                 Q_pred = model(s)
-                if np.random.rand() < epsilon:
+
+                if np.random.rand() < eps:
                     a = np.random.choice(actions)
                 else:
                     a = actions[torch.argmax(Q_pred).item()]
+
+                act_count[a] += 1
                 a_idx = actions.index(a)
 
                 Q_target = Q_pred.clone().detach()
@@ -385,32 +382,36 @@ with tab7:
                 Q_target[a_idx] = r * a + gamma * Q_next.max().item()
 
                 loss = loss_fn(Q_pred, Q_target)
-                optimizer.zero_grad()
+                opt.zero_grad()
                 loss.backward()
-                optimizer.step()
+                opt.step()
 
-        return model
+        return model, act_count
 
-    with st.spinner("Training Q-learning agent..."):
-        q_model = train_dql_model(X_train, y_train)
+    with st.spinner("Training Deep Q-Network..."):
+        model, train_actions = train_q_model(X_train, y_train)
 
-    # Run on test set
+    st.subheader("📊 Training Action Distribution")
+    st.json(train_actions)
+
     portfolio = [10000]
     bh = [10000]
+    test_actions = []
+
     for i in range(len(X_test)):
         s = torch.tensor(X_test[i], dtype=torch.float32)
-        Q_vals = q_model(s)
+        Q_vals = model(s)
         a_idx = torch.argmax(Q_vals).item()
         a = actions[a_idx]
+        test_actions.append(a)
         r = y_test[i]
         portfolio.append(portfolio[-1] * (1 + a * r))
         bh.append(bh[-1] * (1 + r))
 
-    dql_dates = dql_df.index[test_idx]
     result_df = pd.DataFrame({
-        "Date": dql_dates,
-        "Q_Portfolio": portfolio[1:],
+        "Date": dql_df.index[test_idx],
+        "Q_Learning": portfolio[1:],
         "BuyHold": bh[1:]
-    })
+    }).set_index("Date")
 
-    st.line_chart(result_df.set_index("Date"), use_container_width=True)
+    st.line_chart(result_df)
