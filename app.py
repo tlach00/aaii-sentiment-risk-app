@@ -113,51 +113,45 @@ with tab2:
 # ---------------------------- TAB 3 ----------------------------------
 
 with tab3:
-    st.header(':green_book: Z-Score Strategy Backtest')
+    st.header("🧪 Z-Score Strategy Backtest")
+    st.markdown("This strategy compares z-scores of bullish sentiment and S&P 500 price. If sentiment exceeds price → long, otherwise → short.")
 
-    st.markdown('This strategy compares z-scores of bullish sentiment and S&P 500 price. If sentiment exceeds price → long, otherwise → short.')
-
-    col1, col2 = st.columns(2)
+    # Controls
+    col1, col2 = st.columns([3, 2])
     with col1:
-        z_window = st.slider("Rolling Window (days)", 5, 60, 15)
+        window = st.slider("Rolling Window (days)", min_value=5, max_value=60, value=15)
     with col2:
-        initial_capital = st.number_input("Initial Capital ($)", value=10000)
+        initial_capital = st.number_input("Initial Capital ($)", min_value=1000, value=10000, step=1000)
 
-    # Compute z-scores
-    df_z = clean_df.copy()
-    df_z['Bullish_Z'] = (df_z['Bullish'] - df_z['Bullish'].rolling(z_window).mean()) / df_z['Bullish'].rolling(z_window).std()
-    df_z['Price_Z'] = (df_z['SP500_Close'] - df_z['SP500_Close'].rolling(z_window).mean()) / df_z['SP500_Close'].rolling(z_window).std()
+    df_z = clean_df.copy().set_index("Date")
+    df_z = df_z[['Bullish', 'SP500_Close', 'SP500_Return']].dropna()
 
-    df_z.dropna(inplace=True)
+    # Calculate rolling z-scores
+    df_z['Z_Bullish'] = (df_z['Bullish'] - df_z['Bullish'].rolling(window).mean()) / df_z['Bullish'].rolling(window).std()
+    df_z['Z_Price'] = (df_z['SP500_Close'] - df_z['SP500_Close'].rolling(window).mean()) / df_z['SP500_Close'].rolling(window).std()
 
-    # Trading rule
-    df_z['Position'] = (df_z['Bullish_Z'] > df_z['Price_Z']).astype(int)
-    df_z['Position'] = df_z['Position'].replace({0: -1, 1: 1})  # Long = 1, Short = -1
-    df_z['Strategy_Return'] = df_z['SP500_Return'] * df_z['Position'] / 100
+    # Only trade when both z-scores are available (avoids NaNs)
+    df_z = df_z.dropna()
 
-    # Compute cumulative returns
-    df_z['BuyHold'] = (1 + df_z['SP500_Return']/100).cumprod() * initial_capital
-    df_z['Strategy'] = (1 + df_z['Strategy_Return']).cumprod() * initial_capital
+    # Trading logic: +1 for long, -1 for short
+    df_z['Position'] = (df_z['Z_Bullish'] > df_z['Z_Price']).astype(int) * 2 - 1  # 1 or -1
 
-    # Plot cumulative return
-    st.subheader("Cumulative Return")
-    line_chart = alt.Chart(df_z.reset_index()).transform_fold(
-        ["BuyHold", "Strategy"],
-        as_=["key", "value"]
-    ).mark_line().encode(
-        x="Date:T",
-        y=alt.Y("value:Q", title="Portfolio Value ($)"),
-        color="key:N"
-    ).properties(height=300)
+    # Strategy returns
+    df_z['Strategy_Return'] = df_z['Position'].shift(1) * df_z['SP500_Return'] / 100
+    df_z['BuyHold_Return'] = df_z['SP500_Return'] / 100
 
-    st.altair_chart(line_chart, use_container_width=True)
+    # Cumulative returns
+    df_z['Portfolio'] = (1 + df_z['Strategy_Return']).cumprod() * initial_capital
+    df_z['BuyHold'] = (1 + df_z['BuyHold_Return']).cumprod() * initial_capital
 
-    # Summary returns
-    buy_return = (df_z['BuyHold'].iloc[-1] - initial_capital) / initial_capital * 100
-    strat_return = (df_z['Strategy'].iloc[-1] - initial_capital) / initial_capital * 100
+    st.subheader("📈 Cumulative Return")
+    st.line_chart(df_z[['Portfolio', 'BuyHold']], height=360)
 
-    st.markdown("""
-    ### Performance Summary
-    - **Strategy Return:** {:.2f}%
-    - **Buy & Hold Return:** {:.2f}%
-    """.format(strat_return, buy_return))
+    st.subheader("🧮 Performance Summary")
+    strategy_return = (df_z['Portfolio'].iloc[-1] / initial_capital - 1) * 100
+    buyhold_return = (df_z['BuyHold'].iloc[-1] / initial_capital - 1) * 100
+
+    st.markdown(f"""
+    - **Strategy Return**: {strategy_return:.2f}%  
+    - **Buy & Hold Return**: {buyhold_return:.2f}%
+    """)
