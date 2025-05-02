@@ -339,8 +339,15 @@ with tab7:
         dql_df[f"Z_{col}"] = (dql_df[col] - dql_df[col].rolling(20).mean()) / dql_df[col].rolling(20).std()
 
     dql_df = dql_df.dropna()
+
+    # Define states and rewards
     features = dql_df[["Z_Bullish", "Z_Bearish", "Z_Spread", "Z_Momentum"]].values
-    returns = dql_df["SP500_Return"].shift(-1).values / 100  # next week return
+    returns = dql_df["SP500_Return"].shift(-1).values / 100  # future return
+    mask = ~np.isnan(returns)
+
+    features = features[mask]
+    returns = returns[mask]
+    dql_df = dql_df.iloc[:len(returns)]
 
     actions = [-1, 0, 1]
     split_date = pd.to_datetime("2016-01-01")
@@ -349,9 +356,9 @@ with tab7:
 
     X_train = features[train_idx]
     y_train = returns[train_idx]
-
     X_test = features[test_idx]
     y_test = returns[test_idx]
+    test_dates = dql_df.index[test_idx]
 
     class QNet(nn.Module):
         def __init__(self):
@@ -404,7 +411,7 @@ with tab7:
     st.markdown("### 📊 Training Action Distribution")
     st.json(train_actions)
 
-    # Simulate portfolio
+    # Test simulation
     initial_capital = 10000
     portfolio = [initial_capital]
     bh = [initial_capital]
@@ -418,20 +425,23 @@ with tab7:
         test_actions.append(a)
 
         r = y_test[i]
-        portfolio.append(portfolio[-1] * (1 + a * r))
-        bh.append(bh[-1] * (1 + r))
+        if not np.isnan(r):
+            portfolio.append(portfolio[-1] * (1 + a * r))
+            bh.append(bh[-1] * (1 + r))
+        else:
+            portfolio.append(portfolio[-1])
+            bh.append(bh[-1])
 
-    dql_dates = dql_df.index[test_idx]
     result_df = pd.DataFrame({
-        "Date": dql_dates,
+        "Date": test_dates[:len(portfolio) - 1],
         "Q_Learning": portfolio[1:],
         "BuyHold": bh[1:]
-    })
+    }).dropna()
 
     st.line_chart(result_df.set_index("Date"), use_container_width=True)
 
-    # Compute and display returns
-    if len(portfolio) > 1 and not np.isnan(portfolio[-1]):
+    # Safe returns
+    if len(portfolio) > 1 and portfolio[-1] > 0 and bh[-1] > 0:
         q_return = (portfolio[-1] / portfolio[0] - 1) * 100
         bh_return = (bh[-1] / bh[0] - 1) * 100
     else:
