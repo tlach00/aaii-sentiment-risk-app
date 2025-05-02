@@ -305,26 +305,26 @@ with tab6:
     #### 📈 Performance Summary
     - **Multi-Factor Strategy Return:** {mf_ret:.2%}  
     - **Buy & Hold Return:** {bh_ret:.2%}
-
 # ---------------------------- TAB 7 ----------------------------------
 
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.optim as optim
-import json
-
 with tab7:
+    import numpy as np
+    import torch
+    import torch.nn as nn
+    import torch.optim as optim
+    import json
+    import pandas as pd
+
     st.header("🧠 Deep Q-Learning Strategy")
     st.markdown("""
-This strategy uses Deep Q-Learning to learn an optimal trading policy based on sentiment and price momentum.
+    This strategy uses Deep Q-Learning to learn an optimal trading policy based on sentiment and price momentum.
 
-- **State:** Continuous inputs - z-scores of bullish sentiment, bearish sentiment, bull-bear spread, and 4-week price return  
-- **Actions:** -1 (short), 0 (neutral), 1 (long)  
-- **Reward:** Next week return * action  
-- **Training:** 2010 to 2015  
-- **Testing:** 2016 to 2025
-""")
+    - **State:** Continuous inputs - z-scores of bullish sentiment, bearish sentiment, bull-bear spread, and 4-week price return  
+    - **Actions:** -1 (short), 0 (neutral), 1 (long)  
+    - **Reward:** Next week return * action  
+    - **Training:** 2010 to 2015  
+    - **Testing:** 2016 to 2025
+    """)
 
     # Prepare data
     dql_df = clean_df.copy().set_index("Date")
@@ -337,7 +337,7 @@ This strategy uses Deep Q-Learning to learn an optimal trading policy based on s
 
     dql_df = dql_df.dropna()
     features = dql_df[["Z_Bullish", "Z_Bearish", "Z_Spread", "Z_Momentum"]].values
-    returns = dql_df['SP500_Return'].shift(-1).values / 100  # Next week's return
+    returns = dql_df['SP500_Return'].shift(-1).values / 100
 
     actions = [-1, 0, 1]
 
@@ -347,7 +347,6 @@ This strategy uses Deep Q-Learning to learn an optimal trading policy based on s
 
     X_train = features[train_idx]
     y_train = returns[train_idx]
-
     X_test = features[test_idx]
     y_test = returns[test_idx]
 
@@ -369,6 +368,7 @@ This strategy uses Deep Q-Learning to learn an optimal trading policy based on s
         optimizer = optim.Adam(model.parameters(), lr=0.001)
         loss_fn = nn.MSELoss()
         epsilon = 0.2
+
         action_count = {a: 0 for a in actions}
 
         for epoch in range(epochs):
@@ -378,13 +378,14 @@ This strategy uses Deep Q-Learning to learn an optimal trading policy based on s
                 r = y_train[i]
 
                 Q_pred = model(s)
+
                 if np.random.rand() < epsilon:
                     a = np.random.choice(actions)
                 else:
                     a = actions[torch.argmax(Q_pred).item()]
 
-                a_idx = actions.index(a)
                 action_count[a] += 1
+                a_idx = actions.index(a)
 
                 Q_target = Q_pred.clone().detach()
                 Q_next = model(s_next).detach()
@@ -431,17 +432,13 @@ This strategy uses Deep Q-Learning to learn an optimal trading policy based on s
     bh_return = (bh[-1] / bh[0] - 1) * 100
 
     st.subheader("📊 Performance Summary (2016–2024)")
-   st.subheader("📊 Performance Summary (2016–2024)")
-
-q_return_str = f"{q_return:.2f}%"
-bh_return_str = f"{bh_return:.2f}%"
-
-summary = (
-    f"- **Deep Q-learning Strategy Return**: {q_return_str}\n"
-    f"- **Buy & Hold Return**: {bh_return_str}"
-)
-
-st.markdown(summary)
+    q_return_str = f"{q_return:.2f}%"
+    bh_return_str = f"{bh_return:.2f}%"
+    summary = (
+        f"- **Deep Q-learning Strategy Return**: {q_return_str}\n"
+        f"- **Buy & Hold Return**: {bh_return_str}"
+    )
+    st.markdown(summary)
 
     test_actions = np.array(test_actions)
     st.markdown(f"""
