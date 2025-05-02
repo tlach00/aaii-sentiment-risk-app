@@ -438,7 +438,7 @@ bh_return = (bh[-1] / bh[0] - 1) * 100
 
 st.subheader("📊 Performance Summary (2016–2024)")
 st.markdown(f"""
-- **Deep Q-Learning Strategy Return**: {q_return:.2f}%  
+- **Deep Q-learning Strategy Return**: {q_return:.2f}%  
 - **Buy & Hold Return**: {bh_return:.2f}%
 """)
 
