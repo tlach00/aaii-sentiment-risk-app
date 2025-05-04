@@ -538,69 +538,57 @@ with tab8:
 # ----------------- TAB 9 ------------------------
 # ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
 # ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
+# ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
 with tab9:
     st.markdown("## 😱 Fear & Greed Index")
     st.markdown("""
-    This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.  
-    The final score ranges from 0 (extreme fear) to 100 (extreme greed). Each indicator contributes equally.
-    
-    ### 🧮 How it's calculated:
-    - **Market Momentum**: S&P 500 vs. 125-day moving average  
-    - **Stock Price Strength**: % above moving average  
-    - **Volatility**: Inverted VIX (fear proxy)  
-    - **Breadth**: HYG (risk appetite) vs 30-day MA  
-    - **Put/Call Proxy**: VIX score (duplicated)  
-    - **Junk Bond Demand**: HYG / TLT  
-    - **Safe Haven Demand**: SPY / TLT  
+    This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.
+
+    - The final score ranges from 0 (extreme fear) to 100 (extreme greed).
+    - Each indicator contributes equally and is normalized.
+    - Data is fetched from Yahoo Finance and covers 2007 to today.
+    - We also implement a **daily rebalancing strategy**:
+        - If score > 70 → invest 100% in SPY (risk-on)
+        - If score < 30 → invest 100% in TLT (risk-off)
+        - Else → equal weight SPY/TLT
     """)
 
     import yfinance as yf
-    from tqdm import tqdm
-    import altair as alt
+    import plotly.graph_objects as go
 
-    start_date = "2007-01-01"
-    end_date = pd.Timestamp.today().strftime("%Y-%m-%d")
-    tickers = ["^GSPC", "^VIX", "HYG", "SPY", "TLT"]
+    start = "2007-01-01"
+    end = datetime.datetime.today().strftime('%Y-%m-%d')
 
-    try:
-        df = yf.download(tickers, start=start_date, end=end_date)["Close"]
-        df.dropna(inplace=True)
-    except Exception as e:
-        st.error("❌ Failed to download data from Yahoo Finance.")
-        st.exception(e)
-        st.stop()
+    # Download historical daily data
+    symbols = ["^GSPC", "^VIX", "HYG", "SPY", "TLT"]
+    data = yf.download(symbols, start=start, end=end)["Close"]
+    data.columns = data.columns.droplevel(0)
+    data = data.dropna()
 
-    df["SP500_MA125"] = df["^GSPC"].rolling(window=125).mean()
-    df["HYG_MA30"] = df["HYG"].rolling(window=30).mean()
+    # Compute Fear & Greed scores
+    df_fg = data.copy()
+    df_fg['MA_125'] = df_fg["^GSPC"].rolling(125).mean()
+    df_fg['Momentum'] = 100 * (df_fg["^GSPC"] - df_fg['MA_125']) / df_fg['MA_125']
+    df_fg['Strength'] = 100 * (df_fg["^GSPC"] > df_fg['MA_125']).astype(int).rolling(30).mean()
 
-    def compute_fg(row):
-        try:
-            momentum = 100 * (row["^GSPC"] - row["SP500_MA125"]) / row["SP500_MA125"]
-            recent = df.loc[:row.name].tail(125)
-            strength = 100 * np.mean(recent["^GSPC"] > recent["SP500_MA125"])
-            vix_z = (row["^VIX"] - df["^VIX"].mean()) / df["^VIX"].std()
-            volatility = 100 - (vix_z * 20 + 50)
-            breadth = 100 * (row["HYG"] - row["HYG_MA30"]) / row["HYG_MA30"]
-            put_call = volatility
-            junk_bond = 100 * (row["HYG"] / row["TLT"]) - 50
-            safe_haven = 100 * (row["SPY"] / row["TLT"]) - 50
-            scores = [momentum, strength, volatility, breadth, put_call, junk_bond, safe_haven]
-            normalized = [min(max(c, 0), 100) for c in scores]
-            return np.mean(normalized)
-        except:
-            return np.nan
+    vix_z = (df_fg["^VIX"] - df_fg["^VIX"].rolling(30).mean()) / df_fg["^VIX"].rolling(30).std()
+    df_fg['VIX_Score'] = 100 - (vix_z * 20 + 50)
 
-    tqdm.pandas()
-    df["FearGreed"] = df.progress_apply(compute_fg, axis=1)
-    df.dropna(subset=["FearGreed"], inplace=True)
+    df_fg['Breadth'] = 100 * (df_fg["HYG"] - df_fg["HYG"].rolling(30).mean()) / df_fg["HYG"].rolling(30).mean()
+    df_fg['PutCall'] = df_fg['VIX_Score']  # proxy
+    df_fg['BondDemand'] = 100 * (df_fg["HYG"] / df_fg["TLT"]) - 50
+    df_fg['SafeHaven'] = 100 * (df_fg["SPY"] / df_fg["TLT"]) - 50
 
-    latest_score = int(df["FearGreed"].iloc[-1])
+    df_fg['FG_Score'] = df_fg[['Momentum', 'Strength', 'VIX_Score', 'Breadth', 'PutCall', 'BondDemand', 'SafeHaven']].mean(axis=1)
+    df_fg['FG_Score'] = df_fg['FG_Score'].clip(0, 100)
 
-    # Gauge
+    latest_score = int(df_fg['FG_Score'].iloc[-1])
+
+    # Gauge chart
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=latest_score,
-        title={'text': "Fear & Greed Index"},
+        title={'text': "Fear & Greed Index (Latest)"},
         gauge={
             'axis': {'range': [0, 100]},
             'bar': {'color': "black"},
@@ -609,25 +597,53 @@ with tab9:
                 {'range': [25, 50], 'color': '#fff2cc'},
                 {'range': [50, 75], 'color': '#d9f2d9'},
                 {'range': [75, 100], 'color': '#b6d7a8'},
-            ]
+            ],
         }
     ))
     st.plotly_chart(fig, use_container_width=True)
 
-    def label(score):
-        if score < 25: return "😱 Extreme Fear"
-        elif score < 50: return "😨 Fear"
-        elif score < 75: return "😐 Neutral"
-        else: return "😄 Greed"
+    # Time-series chart
+    st.markdown("### 📈 Historical Fear & Greed Index (since 2007)")
+    fg_plot = alt.Chart(df_fg.reset_index()).mark_line().encode(
+        x="Date:T",
+        y=alt.Y("FG_Score:Q", title="Fear & Greed Score"),
+    ).properties(height=350)
+    st.altair_chart(fg_plot, use_container_width=True)
 
-    st.subheader("📉 Market Sentiment Classification")
-    st.markdown(f"**Current market mood:** `{label(latest_score)}` — Score: **{latest_score}/100**")
+    # Portfolio strategy backtest
+    st.markdown("### 💼 Strategy: Dynamic Rebalancing Based on Fear & Greed")
+    df_fg['SPY_Return'] = df_fg['SPY'].pct_change()
+    df_fg['TLT_Return'] = df_fg['TLT'].pct_change()
 
-    # Add time series chart (Altair)
-    st.markdown("### 📈 Historical Fear & Greed Index (2007–Today)")
-    chart = alt.Chart(df.reset_index()).mark_line().encode(
-        x=alt.X('Date:T', title='Date'),
-        y=alt.Y('FearGreed:Q', title='Fear & Greed Index', scale=alt.Scale(domain=[0, 100]))
-    ).properties(width=900, height=350)
+    def dynamic_weights(score):
+        if score > 70:
+            return 1.0, 0.0
+        elif score < 30:
+            return 0.0, 1.0
+        else:
+            return 0.5, 0.5
 
+    weights = df_fg['FG_Score'].apply(dynamic_weights)
+    spy_w = [w[0] for w in weights]
+    tlt_w = [w[1] for w in weights]
+
+    df_fg['Strat_Return'] = df_fg['SPY_Return'] * spy_w + df_fg['TLT_Return'] * tlt_w
+    df_fg['Strat_Cum'] = (1 + df_fg['Strat_Return']).cumprod() * 10000
+    df_fg['SPY_Cum'] = (1 + df_fg['SPY_Return']).cumprod() * 10000
+
+    chart = alt.Chart(df_fg.reset_index()).transform_fold([
+        "Strat_Cum", "SPY_Cum"]
+    ).mark_line().encode(
+        x="Date:T",
+        y=alt.Y("value:Q", title="Portfolio Value ($)"),
+        color=alt.Color("key:N", title="Strategy")
+    ).properties(height=350)
     st.altair_chart(chart, use_container_width=True)
+
+    st.markdown("#### Performance Summary")
+    strat_ret = df_fg['Strat_Cum'].iloc[-1] / 10000 - 1
+    bh_ret = df_fg['SPY_Cum'].iloc[-1] / 10000 - 1
+    st.markdown(f"""
+    - **Fear & Greed Strategy Return:** {strat_ret:.2%}  
+    - **Buy & Hold SPY Return:** {bh_ret:.2%}
+    """)
