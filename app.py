@@ -554,7 +554,7 @@ with tab9:
 
     # Fetch data from Yahoo Finance
     start = "2007-01-01"
-    end = datetime.today().strftime('%Y-%m-%d')
+    end = datetime.datetime.today().strftime('%Y-%m-%d')
     tickers = ["^GSPC", "^VIX", "HYG", "SPY", "TLT"]
     try:
         data = yf.download(tickers, start=start, end=end)["Close"]
