@@ -50,7 +50,6 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "📉 Fear & Greed Index",
     "😱 CNN F&G replication"
 ])
-])
 
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
