@@ -35,7 +35,7 @@ def load_clean_data():
 raw_df = load_raw_excel()
 clean_df = load_clean_data()
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     ":file_folder: Raw Excel Viewer",
     ":chart_with_upwards_trend: Interactive Dashboard",
     "🧪 Z-Score Strategy Backtest",
@@ -43,7 +43,8 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "📊 Weighted Allocation Strategy",
     "🧬 Multi-Factor Strategy",
     "🧠 Deep Q-Learning Strategy",
-    "🧭 Fear & Greed Index"
+    "🧭 Fear & Greed Index", 
+    "CNN F&G replication"
 ])
 
 # ---------------------------- TAB 1 ----------------------------------
@@ -527,3 +528,76 @@ with tab8:
         st.caption(f"Last updated {df_fg['Date'].iloc[-1].strftime('%B %d at %I:%M %p')} ET")
     except Exception:
         st.caption("Last updated: Unavailable")
+
+# ---------------------------- TAB 9 ----------------------------------
+with tab9:
+    st.markdown("""
+    ## 😨 Fear & Greed Index
+    This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.
+
+    The final score ranges from 0 (extreme fear) to 100 (extreme greed).
+    Each indicator contributes equally.
+    """)
+
+    import yfinance as yf
+    import numpy as np
+    import pandas as pd
+    import datetime as dt
+
+    # Define indicator functions
+    def get_price_data(symbol, start, end):
+        return yf.download(symbol, start=start, end=end)
+
+    today = dt.date.today()
+    start_date = today - dt.timedelta(days=365*2)  # 2 years of history
+
+    # Market Momentum: S&P 500 vs 125-day moving average
+    sp500 = get_price_data("^GSPC", start=start_date, end=today)
+    sp500['MA_125'] = sp500['Adj Close'].rolling(window=125).mean()
+    momentum = ((sp500['Adj Close'][-1] - sp500['MA_125'][-1]) / sp500['MA_125'][-1]) * 100
+
+    # Stock Price Strength: % stocks above 50 MA — proxy via S&P 500 EMA
+    sp500['EMA_50'] = sp500['Adj Close'].ewm(span=50).mean()
+    strength = ((sp500['Adj Close'][-1] - sp500['EMA_50'][-1]) / sp500['EMA_50'][-1]) * 100
+
+    # Breadth: Advance-Decline proxy not directly available — placeholder
+    breadth = strength / 2  # Placeholder until better proxy added
+
+    # Put/Call Ratio: from CBOE — not available on yfinance, placeholder
+    put_call = 0.7  # placeholder — normalize later
+
+    # Junk Bond Demand: HYG vs LQD
+    hyg = get_price_data("HYG", start=start_date, end=today)
+    lqd = get_price_data("LQD", start=start_date, end=today)
+    junk_demand = ((hyg['Adj Close'][-1] / lqd['Adj Close'][-1]) - 1) * 100
+
+    # Market Volatility: VIX
+    vix = get_price_data("^VIX", start=start_date, end=today)
+    vol = vix['Adj Close'].rolling(window=30).mean().iloc[-1]
+
+    # Safe Haven Demand: S&P 500 / 20-year treasury
+    tlt = get_price_data("TLT", start=start_date, end=today)
+    haven_demand = ((sp500['Adj Close'][-1] / tlt['Adj Close'][-1]) - 1) * 100
+
+    # Normalize to 0–100 (for demo purpose, simple normalization)
+    def normalize(x, min_v, max_v):
+        return np.clip(100 * (x - min_v) / (max_v - min_v), 0, 100)
+
+    fear_greed_scores = {
+        "Momentum": normalize(momentum, -10, 10),
+        "Strength": normalize(strength, -10, 10),
+        "Breadth": normalize(breadth, -10, 10),
+        "Put/Call": normalize(1 - put_call, 0.5, 1.5),
+        "Junk Demand": normalize(junk_demand, -5, 5),
+        "Volatility": normalize(30 - vol, -10, 40),
+        "Safe Haven": normalize(haven_demand, -10, 10)
+    }
+
+    index_value = np.mean(list(fear_greed_scores.values()))
+
+    st.subheader(f"🧮 Fear & Greed Index Score: {index_value:.1f} / 100")
+
+    # Display each component
+    for key, val in fear_greed_scores.items():
+        st.write(f"{key}: {val:.1f}")
+
