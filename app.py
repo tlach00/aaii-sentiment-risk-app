@@ -535,9 +535,6 @@ with tab8:
 st.set_page_config(page_title="CNN F&G replication", layout="wide")
 
 # ----------------- TAB 9 ------------------------
-import streamlit as st
-st.set_page_config(page_title="CNN F&G replication", layout="wide")
-
 
 with tab9:
     st.markdown("## 😱 Fear & Greed Index (Full Version)")
