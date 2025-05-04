@@ -4,6 +4,7 @@ import altair as alt
 import datetime
 import numpy as np
 import datetime
+import plotly.graph_objects as go 
 
 # Sklearn: Preprocessing, Model, Metrics
 from sklearn.preprocessing import StandardScaler
@@ -446,30 +447,25 @@ with tab7:
 
 # ---------------------------- TAB 8 ----------------------------------
 with tab8:
-    st.markdown("""
-    ## 🧭 Fear & Greed Index (Static Version)
-    This indicator displays the current market sentiment on a scale from 0 (Extreme Fear) to 100 (Extreme Greed).
-    """)
+    st.markdown("## 🧭 Fear & Greed Index (Static Version)")
+    st.markdown("This indicator displays the current market sentiment on a scale from 0 (Extreme Fear) to 100 (Greed).")
 
-    import plotly.graph_objects as go
-
-    # Static sentiment score (e.g., 43 like CNN example)
+    # Static value (you can make it dynamic later)
     sentiment_score = 43
 
-    # Create gauge figure
     fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=sentiment_score,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "Fear & Greed Index"},
-        gauge={
+        mode = "gauge+number",
+        value = sentiment_score,
+        domain = {'x': [0, 1], 'y': [0, 1]},
+        title = {'text': "Fear & Greed Score"},
+        gauge = {
             'axis': {'range': [0, 100]},
             'bar': {'color': "black"},
             'steps': [
-                {'range': [0, 25], 'color': "#f4cccc"},       # Extreme Fear
-                {'range': [25, 50], 'color': "#fce5cd"},      # Fear
-                {'range': [50, 75], 'color': "#d9ead3"},      # Greed
-                {'range': [75, 100], 'color': "#b6d7a8"}      # Extreme Greed
+                {'range': [0, 25], 'color': '#ffcccc'},         # Extreme Fear
+                {'range': [25, 50], 'color': '#ffebcc'},        # Fear
+                {'range': [50, 75], 'color': '#d6f5d6'},        # Greed
+                {'range': [75, 100], 'color': '#b3ffcc'}        # Extreme Greed
             ],
             'threshold': {
                 'line': {'color': "black", 'width': 4},
@@ -480,18 +476,3 @@ with tab8:
     ))
 
     st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("""
-    ### 🕒 Historical Sentiment Snapshots
-    """)
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.metric("Previous Close", "Neutral", delta="47")
-        st.metric("1 Week Ago", "Fear", delta="35")
-    with col2:
-        st.metric("1 Month Ago", "Extreme Fear", delta="18")
-        st.metric("1 Year Ago", "Fear", delta="42")
-
-    st.caption("Last updated May 2 at 7:59:56 PM ET")
-
