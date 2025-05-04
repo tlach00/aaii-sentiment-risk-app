@@ -562,8 +562,8 @@ with tab9:
     # Download historical daily data
     symbols = ["^GSPC", "^VIX", "HYG", "SPY", "TLT"]
     data = yf.download(symbols, start=start, end=end)["Close"]
-    data.columns = data.columns.droplevel(0)
-    data = data.dropna()
+    if isinstance(data.columns, pd.MultiIndex):
+    data.columns = data.columns.droplevel(0)    data = data.dropna()
 
     # Compute Fear & Greed scores
     df_fg = data.copy()
