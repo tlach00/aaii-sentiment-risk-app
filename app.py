@@ -1,7 +1,4 @@
 import streamlit as st
-
-st.set_page_config(page_title="AAII Sentiment Dashboard (Altair)", layout="wide")
-
 import pandas as pd
 import altair as alt
 import numpy as np
