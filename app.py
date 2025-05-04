@@ -503,7 +503,7 @@ with tab9:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # ================= ML STRATEGY BELOW ==================
+         # ================= ML STRATEGY BELOW ==================
 
         fng_df["target"] = data["SPY"].pct_change().shift(-1)
         fng_df.dropna(inplace=True)
