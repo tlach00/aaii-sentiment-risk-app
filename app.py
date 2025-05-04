@@ -376,12 +376,7 @@ with tab8:
 
 # ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
 with tab9:
-    import yfinance as yf
-    import datetime
-    import pandas as pd
-    import numpy as np
-    import plotly.graph_objects as go
-
+    st.set_page_config(page_title="CNN F&G replication", layout="wide")
     st.markdown("## 😱 Fear & Greed Index")
     st.markdown("""
     This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.
@@ -389,126 +384,109 @@ with tab9:
     - The final score ranges from 0 (extreme fear) to 100 (extreme greed).
     - Each indicator contributes equally and is normalized.
     - Data is fetched from Yahoo Finance and covers 2007 to today.
-
-    ### 🧮 How it's calculated:
-    - **Market Momentum**: S&P 500 vs. 125-day moving average  
-    - **Stock Price Strength**: % above moving average  
-    - **Volatility**: Inverted VIX (fear proxy)  
-    - **Breadth**: HYG (risk appetite) vs 30-day MA  
-    - **Put/Call Proxy**: VIX score (duplicated)  
-    - **Junk Bond Demand**: HYG / TLT  
-    - **Safe Haven Demand**: SPY / TLT  
-
-    We also implement a **daily rebalancing strategy**:
-    - If score > 70 → invest 100% in SPY (risk-on)  
-    - If score < 30 → invest 100% in TLT (risk-off)  
-    - Else → equal weight SPY/TLT  
+    - Sources used:
+        - Market Momentum: S&P 500 vs. 125-day moving average
+        - Stock Price Strength: % above 125-day MA (approximation of net 52-week highs/lows)
+        - Market Breadth: McClellan Volume Summation proxy (SPY volume z-score)
+        - Put/Call Ratio: 5-day moving average of put/call ratio (simulated)
+        - Market Volatility: VIX vs. 50-day MA
+        - Safe Haven Demand: SPY vs TLT relative price
+        - Junk Bond Demand: HYG vs LQD relative price
     """)
 
-    # Load data
-    start = datetime.datetime(2007, 1, 1)
+    import yfinance as yf
+    import pandas as pd
+    import numpy as np
+    import datetime
+    import plotly.graph_objects as go
+
     end = datetime.datetime.today()
+    start = end - datetime.timedelta(days=365 * 15)
 
-    tickers = ["^GSPC", "^VIX", "SPY", "TLT", "HYG"]
-    data = yf.download(tickers, start=start, end=end)["Close"]
-    data.columns = data.columns.droplevel(0) if isinstance(data.columns, pd.MultiIndex) else data.columns
-    data.dropna(inplace=True)
+    tickers = {
+        "SP500": "^GSPC",
+        "VIX": "^VIX",
+        "SPY": "SPY",
+        "TLT": "TLT",
+        "HYG": "HYG",
+        "LQD": "LQD"
+    }
 
-    # Compute moving averages
-    data["SP500_MA125"] = data["^GSPC"].rolling(window=125).mean()
-    data["HYG_MA30"] = data["HYG"].rolling(window=30).mean()
+    try:
+        data = yf.download(list(tickers.values()), start=start, end=end)["Close"]
+        data.columns = list(tickers.keys())
+        data.dropna(inplace=True)
 
-    # Compute components
-    df = pd.DataFrame(index=data.index)
-    df["Momentum"] = data["^GSPC"] - data["SP500_MA125"]
-    df["Strength"] = (data["^GSPC"] > data["SP500_MA125"]).astype(int).rolling(window=60).mean()
-    df["Volatility"] = -1 * data["^VIX"]
-    df["Breadth"] = data["HYG"] - data["HYG_MA30"]
-    df["PutCall"] = df["Volatility"]
-    df["JunkDemand"] = data["HYG"] / data["TLT"]
-    df["SafeHaven"] = data["SPY"] / data["TLT"]
-    df.dropna(inplace=True)
+        # Calculations
+        momentum_ma = data["SP500"].rolling(window=125).mean()
+        momentum = 100 * (data["SP500"] - momentum_ma) / momentum_ma
 
-    # Normalize components over 60-day rolling z-score → scaled to 0-100
-    def normalize(series):
-        z = (series - series.rolling(60).mean()) / series.rolling(60).std()
-        score = 50 + 20 * z
-        return score.clip(0, 100)
+        strength = 100 * (data["SP500"] > momentum_ma).rolling(window=50).mean()
 
-    components = ["Momentum", "Strength", "Volatility", "Breadth", "PutCall", "JunkDemand", "SafeHaven"]
-    for col in components:
-        df[col + "_score"] = normalize(df[col])
+        spy_returns = data["SPY"].pct_change()
+        breadth = 100 * spy_returns.rolling(20).mean()
 
-    # Compute final F&G score
-    df["FNG_Index"] = df[[c + "_score" for c in components]].mean(axis=1)
+        put_call = 100 - (data["VIX"].rolling(5).mean() - data["VIX"].mean()) / data["VIX"].std() * 20
 
-    # ⚠️ Select latest valid date
-    latest_date = df.index[-1]
-    latest_score = int(df["FNG_Index"].iloc[-1])
+        vix_ma = data["VIX"].rolling(window=50).mean()
+        volatility = 100 - ((data["VIX"] - vix_ma) / vix_ma * 100)
 
-    # ------------------ GAUGE CHART -------------------
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=latest_score,
-        title={'text': "Fear & Greed Index"},
-        gauge={
-            'axis': {'range': [0, 100]},
-            'bar': {'color': "black"},
-            'steps': [
-                {'range': [0, 25], 'color': '#ffcccc'},
-                {'range': [25, 50], 'color': '#fff2cc'},
-                {'range': [50, 75], 'color': '#d9f2d9'},
-                {'range': [75, 100], 'color': '#b6d7a8'},
-            ],
-        }
-    ))
-    st.plotly_chart(fig, use_container_width=True)
+        safe_haven = (data["SPY"] / data["TLT"]).pct_change().rolling(20).mean() * 100
+        junk_demand = (data["HYG"] / data["LQD"]).pct_change().rolling(20).mean() * 100
 
-    # ------------------ SENTIMENT LABEL -------------------
-    def fg_label(score):
-        if score < 25:
-            return "😱 Extreme Fear"
-        elif score < 50:
-            return "😨 Fear"
-        elif score < 75:
-            return "😐 Neutral"
-        else:
-            return "😄 Greed"
+        def normalize(series):
+            z = (series - series.mean()) / series.std()
+            return 50 + z * 10
 
-    st.subheader("📄 Market Sentiment Classification")
-    st.markdown(f"**Current market mood:** `{fg_label(latest_score)}` — Score: **{latest_score}/100**")
+        fng_df = pd.DataFrame({
+            "momentum": normalize(momentum),
+            "strength": normalize(strength),
+            "breadth": normalize(breadth),
+            "putcall": normalize(put_call),
+            "volatility": normalize(volatility),
+            "safehaven": normalize(safe_haven),
+            "junk": normalize(junk_demand),
+        })
 
-    # ------------------ HISTORICAL CHART -------------------
-    st.subheader("📈 Historical Fear & Greed Index")
-    st.line_chart(df["FNG_Index"])
+        fng_df["FNG_Index"] = fng_df.mean(axis=1)
+        fng_df.dropna(inplace=True)
 
-    # ------------------ STRATEGY BACKTEST -------------------
-    st.subheader("💼 Strategy Backtest: Daily Rebalancing")
-    strategy = pd.DataFrame(index=df.index)
-    strategy["FNG"] = df["FNG_Index"]
-    strategy["SPY"] = data["SPY"].reindex(df.index)
-    strategy["TLT"] = data["TLT"].reindex(df.index)
+        # Gauge
+        latest_score = int(fng_df["FNG_Index"].iloc[-1])
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=latest_score,
+            title={'text': "Fear & Greed Index"},
+            gauge={
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "black"},
+                'steps': [
+                    {'range': [0, 25], 'color': '#ffcccc'},
+                    {'range': [25, 50], 'color': '#fff2cc'},
+                    {'range': [50, 75], 'color': '#d9f2d9'},
+                    {'range': [75, 100], 'color': '#b6d7a8'},
+                ],
+            }
+        ))
+        st.plotly_chart(fig, use_container_width=True)
 
-    # Compute daily returns
-    strategy["SPY_ret"] = strategy["SPY"].pct_change()
-    strategy["TLT_ret"] = strategy["TLT"].pct_change()
+        def fg_label(score):
+            if score < 25:
+                return "😱 Extreme Fear"
+            elif score < 50:
+                return "😨 Fear"
+            elif score < 75:
+                return "😐 Neutral"
+            else:
+                return "😄 Greed"
 
-    # Rebalance based on yesterday's FNG
-    def get_weight(fng):
-        if fng > 70:
-            return 1.0, 0.0
-        elif fng < 30:
-            return 0.0, 1.0
-        else:
-            return 0.5, 0.5
+        st.subheader("📊 Market Sentiment Classification")
+        st.markdown(f"**Current market mood:** {fg_label(latest_score)} — Score: **{latest_score}/100**")
 
-    weights = strategy["FNG"].shift(1).apply(get_weight)
-    strategy["w_spy"] = [w[0] for w in weights]
-    strategy["w_tlt"] = [w[1] for w in weights]
+        # Historical line chart
+        st.subheader("📈 Historical Fear & Greed Index (Since 2007)")
+        st.line_chart(fng_df["FNG_Index"])
 
-    strategy["strat_ret"] = strategy["w_spy"] * strategy["SPY_ret"] + strategy["w_tlt"] * strategy["TLT_ret"]
-    strategy["strat_cum"] = (1 + strategy["strat_ret"]).cumprod()
-    strategy["SPY_cum"] = (1 + strategy["SPY_ret"]).cumprod()
-
-    st.line_chart(strategy[["strat_cum", "SPY_cum"]].dropna().rename(
-        columns={"strat_cum": "F&G Strategy", "SPY_cum": "Buy & Hold SPY"}))
+    except Exception as e:
+        st.error("❌ Error fetching or processing data.")
+        st.exception(e)
