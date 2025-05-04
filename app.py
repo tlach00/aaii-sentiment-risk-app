@@ -34,14 +34,15 @@ def load_clean_data():
 raw_df = load_raw_excel()
 clean_df = load_clean_data()
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     ":file_folder: Raw Excel Viewer",
     ":chart_with_upwards_trend: Interactive Dashboard",
     "🧪 Z-Score Strategy Backtest",
     "🟥 Z-Score Spread Strategy",
     "📊 Weighted Allocation Strategy",
     "🧬 Multi-Factor Strategy",
-    "🧠 Deep Q-Learning Strategy"
+    "🧠 Deep Q-Learning Strategy",
+    "🧭 Fear & Greed Index"
 ])
 
 # ---------------------------- TAB 1 ----------------------------------
@@ -441,3 +442,56 @@ with tab7:
     }
     st.write("Action Distribution (Test Set):")
     st.write(action_counts_test)
+
+
+# ---------------------------- TAB 8 ----------------------------------
+with tab8:
+    st.markdown("""
+    ## 🧭 Fear & Greed Index (Static Version)
+    This indicator displays the current market sentiment on a scale from 0 (Extreme Fear) to 100 (Extreme Greed).
+    """)
+
+    import plotly.graph_objects as go
+
+    # Static sentiment score (e.g., 43 like CNN example)
+    sentiment_score = 43
+
+    # Create gauge figure
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=sentiment_score,
+        domain={'x': [0, 1], 'y': [0, 1]},
+        title={'text': "Fear & Greed Index"},
+        gauge={
+            'axis': {'range': [0, 100]},
+            'bar': {'color': "black"},
+            'steps': [
+                {'range': [0, 25], 'color': "#f4cccc"},       # Extreme Fear
+                {'range': [25, 50], 'color': "#fce5cd"},      # Fear
+                {'range': [50, 75], 'color': "#d9ead3"},      # Greed
+                {'range': [75, 100], 'color': "#b6d7a8"}      # Extreme Greed
+            ],
+            'threshold': {
+                'line': {'color': "black", 'width': 4},
+                'thickness': 0.75,
+                'value': sentiment_score
+            }
+        }
+    ))
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("""
+    ### 🕒 Historical Sentiment Snapshots
+    """)
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric("Previous Close", "Neutral", delta="47")
+        st.metric("1 Week Ago", "Fear", delta="35")
+    with col2:
+        st.metric("1 Month Ago", "Extreme Fear", delta="18")
+        st.metric("1 Year Ago", "Fear", delta="42")
+
+    st.caption("Last updated May 2 at 7:59:56 PM ET")
+
