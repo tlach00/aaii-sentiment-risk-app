@@ -537,111 +537,92 @@ import datetime
 import plotly.graph_objects as go
 
 # ---------------------------- TAB 9 ----------------------------------
-with tab9:
-    st.header(":mag_right: Fear & Greed Index (Full Version)")
+# Tab 9: CNN Fear & Greed Index Replication
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import altair as alt
+from scipy.stats import zscore
 
+with tab9:
     st.markdown("""
+    ### 😱 Fear & Greed Index (Full Version)
     This index dynamically estimates current market sentiment using 7 equally-weighted indicators:
+
     - **Market Momentum** (1M S&P 500 return)
     - **Stock Price Strength** (% stocks above 50-day MA)
     - **Stock Price Breadth** (advancing vs declining volume)
-    - **Put/Call Options Ratio** (inverse)
+    - **Put/Call Options Ratio** *(inverse)*
     - **Junk Bond Demand** (HYG vs LQD return spread)
-    - **Market Volatility** (inverse VIX)
+    - **Market Volatility** *(inverse VIX)*
     - **Safe Haven Demand** (10Y yield vs 3M yield spread)
 
     Each score is normalized and scaled from 0 (Fear) to 100 (Greed), averaged daily.
     """)
 
-    import yfinance as yf
-    from datetime import datetime, timedelta
-
-    # Dates
-    end = datetime.today()
-    start = end - timedelta(days=365*2)
-
-    # Download needed tickers
+    # Download data
     tickers = {
-        "^GSPC": "S&P 500",
-        "AAPL": "Stock Strength",
-        "HYG": "High Yield Bonds",
-        "LQD": "Investment Grade Bonds",
-        "^VIX": "Volatility",
-        "^IRX": "3M Treasury",
-        "^TNX": "10Y Treasury",
-        "^PCR": "Put/Call Ratio (proxy)"
+        'SP500': '^GSPC',
+        'VIX': '^VIX',
+        'HYG': 'HYG',
+        'LQD': 'LQD',
+        'SPY': 'SPY',
+        '10Y': '^TNX',
+        '3M': '^IRX'
     }
 
-    data = yf.download(list(tickers.keys()), start=start, end=end)["Close"].dropna()
+    start_date = '2020-01-01'
+    end_date = pd.to_datetime("today").strftime('%Y-%m-%d')
 
-    # 1. Market Momentum: 1-month % return of S&P 500
-    momentum = data["^GSPC"].pct_change(21)
+    data = yf.download(list(tickers.values()), start=start_date, end=end_date)['Close']
+    data.columns = list(tickers.keys())
+    data = data.dropna()
 
-    # 2. Stock Strength: % of stocks above 50-day MA (use AAPL proxy for demo)
-    ma_50 = data["AAPL"].rolling(50).mean()
-    strength = (data["AAPL"] > ma_50).astype(int)
+    df = data.copy()
 
-    # 3. Breadth: difference in volume (simulate with 1D % change of S&P)
-    breadth = data["^GSPC"].pct_change()
+    # Compute metrics
+    df['Momentum'] = df['SP500'].pct_change(21)
+    df['MA_50'] = df['SPY'].rolling(50).mean()
+    df['Strength'] = (df['SPY'] > df['MA_50']).astype(int)
+    df['Breadth'] = df['SPY'].pct_change().rolling(5).sum()
+    df['Volatility'] = -df['VIX']
+    df['PutCall'] = np.log(df['VIX'])  # Placeholder for real put/call
+    df['JunkSpread'] = df['HYG'].pct_change(5) - df['LQD'].pct_change(5)
+    df['SafeHaven'] = df['10Y'] - df['3M']
 
-    # 4. Put/Call Ratio: use inverse of synthetic PCR (use ^PCR for demo)
-    pcr = 1 / data["^PCR"]
+    index_df = df[['Momentum', 'Strength', 'Breadth', 'PutCall', 'JunkSpread', 'Volatility', 'SafeHaven']].dropna()
 
-    # 5. Junk Bond Demand: HYG - LQD returns spread
-    hyg = data["HYG"].pct_change(5)
-    lqd = data["LQD"].pct_change(5)
-    junk_spread = hyg - lqd
+    # Compute z-scores per column
+    index_z = index_df.copy()
+    for col in index_df.columns:
+        if index_df[col].notna().sum() > 1:
+            index_z[col] = zscore(index_df[col])
+        else:
+            index_z[col] = np.nan
 
-    # 6. Volatility: inverse of VIX
-    inv_vix = 1 / data["^VIX"]
+    index_z = index_z.clip(lower=-2, upper=2)
+    index_scaled = ((index_z + 2) / 4) * 100
+    index_scaled['F&G Index'] = index_scaled.mean(axis=1)
 
-    # 7. Safe Haven Demand: 10Y - 3M yield spread
-    tnx = data["^TNX"] / 100
-    irx = data["^IRX"] / 100
-    spread = tnx - irx
+    st.markdown("""
+    #### 🔍 Indicator Scores (Last Value)
+    """)
+    latest = index_scaled.iloc[-1]
+    col1, col2, col3 = st.columns(3)
+    col4, col5, col6, col7 = st.columns(4)
+    for i, (label, value) in enumerate(latest.items()):
+        col = [col1, col2, col3, col4, col5, col6, col7][i % 7]
+        col.metric(label, f"{value:.0f}")
 
-    # Compile indicators
-    index_df = pd.DataFrame({
-        "Momentum": momentum,
-        "Strength": strength,
-        "Breadth": breadth,
-        "PutCallInv": pcr,
-        "JunkSpread": junk_spread,
-        "InvVIX": inv_vix,
-        "YieldSpread": spread
-    }).dropna()
+    # Line chart of Fear & Greed Index
+    chart_df = index_scaled[['F&G Index']].reset_index().rename(columns={'index': 'Date'})
+    st.markdown("""#### 📈 Fear & Greed Index Trend""")
+    line_chart = alt.Chart(chart_df).mark_line().encode(
+        x=alt.X('Date:T', title='Date'),
+        y=alt.Y('F&G Index:Q', title='Index Value (0=Fear, 100=Greed)'),
+        tooltip=['Date:T', 'F&G Index:Q']
+    ).properties(height=400)
+    st.altair_chart(line_chart, use_container_width=True)
 
-    # Normalize to z-scores then scale 0-100
-    index_z = index_df.apply(zscore).clip(-2, 2)
-    index_scaled = ((index_z + 2) / 4 * 100).round(1)
-    index_scaled["FearGreed"] = index_scaled.mean(axis=1)
-
-    # Plot historical trend
-    st.subheader("📈 Historical Fear & Greed Index")
-    chart = alt.Chart(index_scaled.reset_index()).mark_line().encode(
-        x=alt.X("Date:T"),
-        y=alt.Y("FearGreed:Q", title="Index (0 = Fear, 100 = Greed)")
-    ).properties(height=300)
-    st.altair_chart(chart, use_container_width=True)
-
-    # Show today's score
-    st.subheader("📊 Today's Score & Indicators")
-    today = index_scaled.iloc[-1]
-    st.metric("🧠 Overall Fear & Greed Score", f"{today['FearGreed']:.1f} / 100")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("""**Indicator Scores:**""")
-        st.dataframe(today.drop("FearGreed"), use_container_width=True)
-
-    with col2:
-        st.write("""**Explanation Tooltips:**""")
-        st.markdown("""
-        - **Momentum:** 1M return of S&P 500
-        - **Strength:** % stocks above 50D MA (proxy)
-        - **Breadth:** Volume spread (approx.)
-        - **PutCallInv:** Inverse of PCR
-        - **JunkSpread:** HYG vs LQD
-        - **InvVIX:** Inverse of VIX
-        - **YieldSpread:** 10Y - 3M yields
-        """)
+    st.caption(f"Last updated: {chart_df['Date'].iloc[-1].strftime('%b %d, %Y')}")
