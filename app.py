@@ -448,8 +448,9 @@ with tab7:
 with tab8:
     import plotly.graph_objects as go
 
-    st.markdown("### 🔷 Fear & Greed Index (Dynamic Version)")
+    st.markdown("### 🔷 Fear & Greed Index")
     st.write("This indicator dynamically estimates current market sentiment based on AAII bullish/bearish sentiment and price momentum.")
+    st.markdown("*The score is the average of two normalized components: the Bull-Bear sentiment spread and the 4-week return of the S&P 500.*")
 
     # Compute a simple dynamic fear & greed score (0–100 scale)
     df_fg = clean_df.copy()
