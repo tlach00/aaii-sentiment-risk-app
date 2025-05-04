@@ -47,6 +47,9 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
+    st.header(":clipboard: Filtered Data Table (from Interactive Dashboard)")
+    st.dataframe(filtered_df, use_container_width=True, height=400)
+
     st.header(":file_folder: Raw AAII Sentiment Excel File")
     st.dataframe(raw_df)
 
@@ -113,9 +116,6 @@ with tab2:
     ).resolve_scale(y='independent').properties(height=300)
 
     st.altair_chart(chart3, use_container_width=True)
-
-    st.markdown("### :clipboard: Filtered Data Table")
-    st.dataframe(filtered_df, use_container_width=True, height=400)
 
 # ---------------------------- TAB 3 ----------------------------------
 with tab3:
