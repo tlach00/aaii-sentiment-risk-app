@@ -46,7 +46,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
-    st.header("📋 Filtered Data Table (from Interactive Dashboard)")
+    st.header("📋 Filtered Data Table 
     min_date = clean_df["Date"].min().date()
     max_date = clean_df["Date"].max().date()
     start_date = pd.to_datetime(min_date)
