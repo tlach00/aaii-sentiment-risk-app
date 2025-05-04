@@ -394,6 +394,12 @@ with tab9:
         - Junk Bond Demand: HYG vs LQD relative price
     """)
 
+    import yfinance as yf
+    import pandas as pd
+    import numpy as np
+    import datetime
+    import plotly.graph_objects as go
+
     end = datetime.datetime.today()
     start = end - datetime.timedelta(days=365 * 15)
 
