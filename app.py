@@ -374,7 +374,6 @@ with tab8:
 
 
 
-# ------------------------- TAB 9: CNN Fear & Greed Replication + ML Strategy -------------------------
 # ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
 with tab9:
     st.markdown("## 😱 Fear & Greed Index")
@@ -403,9 +402,12 @@ with tab9:
     from sklearn.preprocessing import StandardScaler
     import plotly.express as px
 
-    # Define date range
-    end = datetime.datetime.today()
-    start = datetime.datetime(2007, 1, 1)
+    # Date selection widget
+    st.sidebar.subheader("📅 Select a date range")
+    min_date = datetime.date(2007, 1, 1)
+    max_date = datetime.date.today()
+    start = st.sidebar.date_input("Start date", min_value=min_date, max_value=max_date, value=min_date)
+    end = st.sidebar.date_input("End date", min_value=min_date, max_value=max_date, value=max_date)
 
     # Download data
     tickers = {
@@ -456,7 +458,6 @@ with tab9:
         fng_df["FNG_Index"] = fng_df.mean(axis=1)
         fng_df.dropna(inplace=True)
 
-        # Latest value
         latest_score = int(fng_df["FNG_Index"].iloc[-1])
         latest_date = fng_df.index[-1].strftime("%B %d, %Y")
 
@@ -470,7 +471,6 @@ with tab9:
             else:
                 return "😄 Greed"
 
-        # Gauge chart
         gauge_fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=latest_score,
@@ -491,7 +491,7 @@ with tab9:
         st.subheader("📊 Market Sentiment Classification")
         st.markdown(f"**Current market mood on {latest_date}:** {fg_label(latest_score)} — Score: **{latest_score}/100**")
 
-        st.subheader("📉 Historical Fear & Greed Index (Since 2007)")
+        st.subheader("📉 Historical Fear & Greed Index")
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=fng_df.index, y=fng_df["FNG_Index"], mode='lines', name='F&G Index', line=dict(color='steelblue')))
         fig.add_shape(type="rect", x0=fng_df.index[0], x1=fng_df.index[-1], y0=0, y1=25, fillcolor="#ffcccc", opacity=0.3, line_width=0, layer="below")
@@ -528,7 +528,6 @@ with tab9:
         positions = []
         daily_returns = []
         trade_dates = []
-        prev_position = 0
 
         for i, r in enumerate(returns_test):
             action = predictions[i]
@@ -552,17 +551,9 @@ with tab9:
         fig2.add_trace(go.Scatter(x=strat_df["Date"], y=strat_df["Strategy"], name="ML Strategy"))
         fig2.add_trace(go.Scatter(x=strat_df["Date"], y=strat_df["BuyHold"], name="Buy & Hold", line=dict(dash="dash", color="black")))
 
-        for date, action in trade_dates:
-            label = "Long" if action == 1 else ("Short" if action == -1 else "Neutral")
-            color = "green" if action == 1 else ("red" if action == -1 else "gray")
-            fig2.add_trace(go.Scatter(x=[date], y=[strat_df.loc[strat_df["Date"] == date, "Strategy"].values[0]],
-                                      mode="markers+text", text=[label],
-                                      marker=dict(size=8, color=color), name=f"Trade: {label}"))
-
         fig2.update_layout(title="ML Strategy vs Buy & Hold", xaxis_title="Date", yaxis_title="Portfolio Value", height=500)
         st.plotly_chart(fig2, use_container_width=True)
 
-        # Trade history table
         trade_log = pd.DataFrame(trade_dates, columns=["Date", "Position"])
         trade_log["Position"] = trade_log["Position"].map({1: "Long", -1: "Short", 0: "Neutral"})
         st.subheader("📋 Trade Log")
