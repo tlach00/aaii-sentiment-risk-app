@@ -399,6 +399,9 @@ with tab9:
     import numpy as np
     import datetime
     import plotly.graph_objects as go
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.preprocessing import StandardScaler
+    import plotly.express as px
 
     # Define date range
     end = datetime.datetime.today()
@@ -436,7 +439,6 @@ with tab9:
         safe_haven = (data["SPY"] / data["TLT"]).pct_change().rolling(20).mean() * 100
         junk_demand = (data["HYG"] / data["LQD"]).pct_change().rolling(20).mean() * 100
 
-        # Z-score normalization
         def normalize(series):
             z = (series - series.mean()) / series.std()
             return 50 + z * 10
@@ -458,7 +460,6 @@ with tab9:
         latest_score = int(fng_df["FNG_Index"].iloc[-1])
         latest_date = fng_df.index[-1].strftime("%B %d, %Y")
 
-        # Classification label
         def fg_label(score):
             if score < 25:
                 return "😱 Extreme Fear"
@@ -490,34 +491,83 @@ with tab9:
         st.subheader("📊 Market Sentiment Classification")
         st.markdown(f"**Current market mood on {latest_date}:** {fg_label(latest_score)} — Score: **{latest_score}/100**")
 
-        # Historical line chart with shaded zones
         st.subheader("📉 Historical Fear & Greed Index (Since 2007)")
-
         fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=fng_df.index,
-            y=fng_df["FNG_Index"],
-            mode='lines',
-            name='F&G Index',
-            line=dict(color='steelblue')
-        ))
-
-        # Add shaded zones
-        fig.add_shape(type="rect", x0=fng_df.index[0], x1=fng_df.index[-1],
-                      y0=0, y1=25, fillcolor="#ffcccc", opacity=0.3, line_width=0, layer="below")
-        fig.add_shape(type="rect", x0=fng_df.index[0], x1=fng_df.index[-1],
-                      y0=75, y1=100, fillcolor="#d9f2d9", opacity=0.3, line_width=0, layer="below")
-
-        fig.update_layout(
-            yaxis=dict(title='Index Value (0–100)', range=[0, 100]),
-            xaxis=dict(title='Date'),
-            showlegend=False,
-            height=400
-        )
-
+        fig.add_trace(go.Scatter(x=fng_df.index, y=fng_df["FNG_Index"], mode='lines', name='F&G Index', line=dict(color='steelblue')))
+        fig.add_shape(type="rect", x0=fng_df.index[0], x1=fng_df.index[-1], y0=0, y1=25, fillcolor="#ffcccc", opacity=0.3, line_width=0, layer="below")
+        fig.add_shape(type="rect", x0=fng_df.index[0], x1=fng_df.index[-1], y0=75, y1=100, fillcolor="#d9f2d9", opacity=0.3, line_width=0, layer="below")
+        fig.update_layout(yaxis=dict(title='Index Value (0–100)', range=[0, 100]), xaxis=dict(title='Date'), showlegend=False, height=400)
         st.plotly_chart(fig, use_container_width=True)
+
+        # ---------------- ML STRATEGY ------------------
+        st.subheader("🤖 ML Strategy Based on Fear & Greed")
+        features = fng_df.copy()
+        prices = data.loc[features.index, "SPY"]
+        features["target"] = prices.pct_change().shift(-1)
+        features.dropna(inplace=True)
+        features["label"] = np.where(features["target"] > 0.001, 1, np.where(features["target"] < -0.001, -1, 0))
+
+        split_date = "2020-01-01"
+        X_train = features.loc[:split_date].drop(columns=["target", "label"])
+        y_train = features.loc[:split_date]["label"]
+        X_test = features.loc[split_date:].drop(columns=["target", "label"])
+        y_test = features.loc[split_date:]["label"]
+        returns_test = features.loc[split_date:]["target"]
+
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
+
+        model = LogisticRegression(multi_class='ovr', solver='lbfgs', max_iter=1000, random_state=0)
+        model.fit(X_train_scaled, y_train)
+
+        predictions = model.predict(X_test_scaled)
+        capital = 10000
+        strat_values = [capital]
+        buy_hold_values = [capital]
+        positions = []
+        daily_returns = []
+        trade_dates = []
+        prev_position = 0
+
+        for i, r in enumerate(returns_test):
+            action = predictions[i]
+            daily_return = r * action
+            positions.append(action)
+            daily_returns.append(daily_return)
+            strat_values.append(strat_values[-1] * (1 + daily_return))
+            buy_hold_values.append(buy_hold_values[-1] * (1 + r))
+            if i > 0 and predictions[i] != predictions[i - 1]:
+                trade_dates.append((returns_test.index[i], action))
+
+        st.subheader("📈 ML Strategy vs Buy & Hold")
+        strat_df = pd.DataFrame({
+            "Date": returns_test.index,
+            "Strategy": strat_values[1:],
+            "BuyHold": buy_hold_values[1:],
+            "Position": positions
+        })
+
+        fig2 = go.Figure()
+        fig2.add_trace(go.Scatter(x=strat_df["Date"], y=strat_df["Strategy"], name="ML Strategy"))
+        fig2.add_trace(go.Scatter(x=strat_df["Date"], y=strat_df["BuyHold"], name="Buy & Hold", line=dict(dash="dash", color="black")))
+
+        for date, action in trade_dates:
+            label = "Long" if action == 1 else ("Short" if action == -1 else "Neutral")
+            color = "green" if action == 1 else ("red" if action == -1 else "gray")
+            fig2.add_trace(go.Scatter(x=[date], y=[strat_df.loc[strat_df["Date"] == date, "Strategy"].values[0]],
+                                      mode="markers+text", text=[label],
+                                      marker=dict(size=8, color=color), name=f"Trade: {label}"))
+
+        fig2.update_layout(title="ML Strategy vs Buy & Hold", xaxis_title="Date", yaxis_title="Portfolio Value", height=500)
+        st.plotly_chart(fig2, use_container_width=True)
+
+        # Trade history table
+        trade_log = pd.DataFrame(trade_dates, columns=["Date", "Position"])
+        trade_log["Position"] = trade_log["Position"].map({1: "Long", -1: "Short", 0: "Neutral"})
+        st.subheader("📋 Trade Log")
+        st.dataframe(trade_log)
 
     except Exception as e:
         st.error("❌ Error fetching or processing data.")
         st.exception(e)
-
