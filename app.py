@@ -387,6 +387,25 @@ with tab9:
                 ]
             }
         ))
+
+        st.markdown("### 🧠 How this Fear & Greed Index is Calculated")
+
+st.markdown("""
+This is a **CNN-style Fear & Greed Index** built using publicly available data from Yahoo Finance.
+It mimics the logic of the original CNN model, which combines seven equally-weighted indicators into a single sentiment score (0–100 scale).
+
+Each component is standardized using **Z-scores** to reflect relative deviations from historical behavior:
+
+- **Market Momentum**: S&P 500 vs. 125-day moving average
+- **Stock Price Strength**: % of stocks above 125-day moving average
+- **Market Breadth**: Rolling 20-day average return of SPY (proxy for McClellan Volume Summation Index)
+- **Put/Call Ratio (proxy)**: VIX z-score deviation
+- **Market Volatility**: VIX vs. 50-day moving average
+- **Safe Haven Demand**: SPY vs. TLT (stocks vs bonds)
+- **Junk Bond Demand**: HYG vs. LQD (high yield vs investment grade)
+
+Each is converted to a standardized sentiment score (0 = extreme fear, 100 = extreme greed) and then averaged.
+""")
         st.plotly_chart(gauge_fig, use_container_width=True)
 
         # Historical chart
