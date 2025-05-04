@@ -242,9 +242,8 @@ with tab8:
     st.write("This indicator dynamically estimates current market sentiment based on AAII bullish/bearish sentiment and price momentum.")
     st.markdown("*The score is the average of two normalized components: the Bull-Bear sentiment spread and the 4-week return of the S&P 500.*")
 
-    # Ensure the data is prepared correctly
+    # --- Compute the dynamic AAII-based Fear & Greed Index ---
     df_fg = clean_df.copy()
-    df_fg = df_fg.dropna(subset=["Bullish", "Bearish", "SP500_Close"])
     df_fg["BullBearSpread"] = df_fg["Bullish"] - df_fg["Bearish"]
     df_fg["Momentum"] = df_fg["SP500_Close"].pct_change(4)
 
@@ -254,10 +253,8 @@ with tab8:
     df_fg["FG_Score"] = ((bb_scaled + mo_scaled) / 2 * 100).clip(0, 100)
     df_fg.dropna(inplace=True)
 
-    # Latest score
+    # --- Latest score and gauge chart ---
     current_score = int(df_fg["FG_Score"].iloc[-1])
-
-    # Gauge chart
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=current_score,
@@ -275,7 +272,7 @@ with tab8:
     ))
     st.plotly_chart(fig, use_container_width=True)
 
-    # Sentiment label with explanation
+    # --- Sentiment label ---
     def get_sentiment_label(score):
         if score < 25:
             return "Extreme Fear"
@@ -290,14 +287,13 @@ with tab8:
     label_descriptions = {
         "Extreme Fear": "🔴 **Extreme Fear** – Investors are very worried.",
         "Fear": "🟠 **Fear** – Investors are cautious.",
-        "Neutral": "🟡 **Neutral** – Market is balanced.",
         "Greed": "🟢 **Greed** – Investors are optimistic.",
         "Extreme Greed": "🟣 **Extreme Greed** – Investors are euphoric."
     }
-    description = label_descriptions.get(sentiment_label, "")
+    description = label_descriptions.get(sentiment_label, "🟡 **Neutral** – Market is balanced.")
     st.markdown(f"<h2 style='text-align: center;'>{description}</h2>", unsafe_allow_html=True)
 
-    # Historical Sentiment Snapshots
+    # --- Historical Snapshots ---
     st.subheader("🕰️ Historical Sentiment Snapshots")
     dates = {
         "Previous Close": -1,
@@ -305,17 +301,18 @@ with tab8:
         "1 Month Ago": -21,
         "1 Year Ago": -52
     }
+
     cols = st.columns(len(dates))
     for i, (label, idx) in enumerate(dates.items()):
         try:
             val = int(df_fg["FG_Score"].iloc[idx])
             cols[i].metric(label, get_sentiment_label(val), val)
         except IndexError:
-            cols[i].metric(label, "N/A", "")
+            cols[i].metric(label, "N/A", "Not enough data")
 
-    # Last updated
+    # --- Last updated ---
     try:
-        st.caption(f"Last updated {df_fg.index[-1].strftime('%B %d at %I:%M %p')} ET")
+        st.caption(f"Last updated {df_fg['Date'].iloc[-1].strftime('%B %d, %Y')} ET")
     except Exception:
         st.caption("Last updated: Unavailable")
 
