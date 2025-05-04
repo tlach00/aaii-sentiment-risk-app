@@ -529,99 +529,104 @@ with tab8:
     except Exception:
         st.caption("Last updated: Unavailable")
 
-# ---------------------------- TAB 9 ----------------------------------
+import streamlit as st
 import yfinance as yf
+import pandas as pd
+import numpy as np
+import datetime
 import plotly.graph_objects as go
 
+# ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
 with tab9:
     st.markdown("## 😱 Fear & Greed Index")
     st.markdown("""
     This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.  
-    The final score ranges from 0 (extreme fear) to 100 (extreme greed). Each indicator contributes equally.
+    \nThe final score ranges from 0 (extreme fear) to 100 (extreme greed). Each indicator contributes equally.
     """)
-
-    # Utility to safely fetch data
-    def safe_download(ticker, start, end):
-        try:
-            df = yf.download(ticker, start=start, end=end)
-            if df.empty:
-                st.warning(f"⚠️ No data returned for {ticker}.")
-                return None
-            return df
-        except Exception as e:
-            st.error(f"Failed to download {ticker}: {e}")
-            return None
 
     end = datetime.datetime.today()
     start = end - datetime.timedelta(days=365)
 
-    sp500 = safe_download("^GSPC", start, end)
-    vix = safe_download("^VIX", start, end)
-    hyg = safe_download("HYG", start, end)
-    spy = safe_download("SPY", start, end)
-    tlt = safe_download("TLT", start, end)
+    # Download Yahoo Finance data
+    try:
+        sp500 = yf.download("^GSPC", start=start, end=end)["Close"]
+        vix = yf.download("^VIX", start=start, end=end)["Close"]
+        hyg = yf.download("HYG", start=start, end=end)["Close"]
+        spy = yf.download("SPY", start=start, end=end)["Close"]
+        tlt = yf.download("TLT", start=start, end=end)["Close"]
+    except Exception as e:
+        st.error("❌ Failed to fetch data from Yahoo Finance.")
+        st.exception(e)
+        st.stop()
 
-    if any(x is None for x in [sp500, vix, hyg, spy, tlt]):
-    st.error("❌ Could not retrieve all required data to compute the Fear & Greed Index.")
-    else:
-        # 1. Market Momentum
-        sp500["MA_125"] = sp500["Close"].rolling(window=125).mean()
-        latest_momentum = (sp500["Close"].iloc[-1] - sp500["MA_125"].iloc[-1]) / sp500["MA_125"].iloc[-1]
-        score_momentum = np.interp(latest_momentum, [-0.1, 0.1], [0, 100])
+    if any(x is None or x.empty for x in [sp500, vix, hyg, spy, tlt]):
+        st.error("One or more data series could not be downloaded properly.")
+        st.stop()
 
-        # 2. Stock Price Strength
-        sp500["MA_50"] = sp500["Close"].rolling(window=50).mean()
-        score_strength = np.interp((sp500["Close"].iloc[-1] - sp500["MA_50"].iloc[-1]) / sp500["MA_50"].iloc[-1],
-                                   [-0.05, 0.05], [0, 100])
+    df = pd.concat([sp500, vix, hyg, spy, tlt], axis=1)
+    df.columns = ["SP500", "VIX", "HYG", "SPY", "TLT"]
+    df.dropna(inplace=True)
 
-        # 3. Market Volatility
-        score_volatility = np.interp(-vix["Close"].iloc[-1], [-40, -10], [0, 100])
+    # 1. Market Momentum: 125-day moving average vs current price
+    ma_125 = df["SP500"].rolling(window=125).mean()
+    momentum_score = 100 * (df["SP500"].iloc[-1] - ma_125.iloc[-1]) / ma_125.iloc[-1]
 
-        # 4. Junk Bond Demand
-        hyg_return = hyg["Close"].pct_change(21).iloc[-1]
-        score_junk = np.interp(hyg_return, [-0.05, 0.05], [0, 100])
+    # 2. Stock Price Strength: % above MA
+    strength_score = 100 * np.mean(df["SP500"] > ma_125)
 
-        # 5. Put & Call Options
-        put_call_ratio = spy["Volume"].rolling(5).mean().iloc[-1] / spy["Volume"].rolling(5).mean().iloc[-20]
-        score_put_call = np.interp(put_call_ratio, [0.8, 1.2], [100, 0])
+    # 3. Volatility: Inverted VIX (higher VIX = more fear)
+    vix_z = (df["VIX"] - df["VIX"].mean()) / df["VIX"].std()
+    vix_score = 100 - (vix_z.iloc[-1] * 20 + 50)
 
-        # 6. Safe Haven Demand
-        safe_demand = spy["Close"].pct_change(21).iloc[-1] - tlt["Close"].pct_change(21).iloc[-1]
-        score_safe = np.interp(safe_demand, [-0.1, 0.1], [0, 100])
+    # 4. Stock Price Breadth: Advance-decline proxy using HYG (risk appetite)
+    hyg_ma = df["HYG"].rolling(window=30).mean()
+    breadth_score = 100 * (df["HYG"].iloc[-1] - hyg_ma.iloc[-1]) / hyg_ma.iloc[-1]
 
-        # 7. Breadth
-        recent_returns = spy["Close"].pct_change().tail(20)
-        breadth_score = np.interp((recent_returns > 0).mean(), [0.4, 0.6], [0, 100])
+    # 5. Put & Call Options: not available — proxy using VIX/SPY
+    putcall_score = vix_score  # duplicated proxy
 
-        scores = [score_momentum, score_strength, score_volatility,
-                  score_junk, score_put_call, score_safe, breadth_score]
-        final_score = int(np.mean(scores))
+    # 6. Junk Bond Demand: HYG vs TLT
+    bond_score = 100 * (df["HYG"].iloc[-1] / df["TLT"].iloc[-1]) - 50
 
-        def get_label(score):
-            if score < 20: return "Extreme Fear"
-            elif score < 40: return "Fear"
-            elif score < 60: return "Neutral"
-            elif score < 80: return "Greed"
-            else: return "Extreme Greed"
+    # 7. Safe Haven Demand: SPY vs TLT (inverse)
+    safehaven_score = 100 * (df["SPY"].iloc[-1] / df["TLT"].iloc[-1]) - 50
 
-        # Gauge chart
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=final_score,
-            number={'font': {'size': 48}},
-            title={'text': "Fear & Greed Index", 'font': {'size': 24}},
-            gauge={
-                'axis': {'range': [0, 100]},
-                'bar': {'color': "black"},
-                'steps': [
-                    {'range': [0, 20], 'color': '#f8d7da'},
-                    {'range': [20, 40], 'color': '#fff3cd'},
-                    {'range': [40, 60], 'color': '#e2e3e5'},
-                    {'range': [60, 80], 'color': '#d4edda'},
-                    {'range': [80, 100], 'color': '#c3e6cb'}
-                ]
-            }
-        ))
-        st.plotly_chart(fig, use_container_width=True)
+    # Normalize and combine all 7 indicators equally
+    components = [momentum_score, strength_score, vix_score,
+                  breadth_score, putcall_score, bond_score, safehaven_score]
 
-        st.markdown(f"### 📊 Current Sentiment: **{get_label(final_score)}**")
+    normalized = [min(max(c, 0), 100) for c in components]
+    final_score = int(np.mean(normalized))
+
+    # Gauge chart
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=final_score,
+        title={'text': "Fear & Greed Index"},
+        gauge={
+            'axis': {'range': [0, 100]},
+            'bar': {'color': "black"},
+            'steps': [
+                {'range': [0, 25], 'color': '#ffcccc'},
+                {'range': [25, 50], 'color': '#fff2cc'},
+                {'range': [50, 75], 'color': '#d9f2d9'},
+                {'range': [75, 100], 'color': '#b6d7a8'},
+            ],
+        }
+    ))
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Label
+    def fg_label(score):
+        if score < 25:
+            return "😱 Extreme Fear"
+        elif score < 50:
+            return "😨 Fear"
+        elif score < 75:
+            return "😐 Neutral"
+        else:
+            return "😄 Greed"
+
+    st.subheader("📉 Market Sentiment Classification")
+    st.markdown(f"**Current market mood:** `{fg_label(final_score)}` — Score: **{final_score}/100**")
