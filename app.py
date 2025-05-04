@@ -529,7 +529,6 @@ with tab8:
         st.caption("Last updated: Unavailable")
 
 
-st.set_page_config(page_title="CNN F&G replication", layout="wide")
 
 # ----------------- TAB 9 ------------------------
 
