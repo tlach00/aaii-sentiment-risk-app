@@ -11,6 +11,7 @@ import datetime
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 from tqdm import tqdm
+from datetime import datetime, timedelta
 
 warnings.filterwarnings("ignore")
 st.set_page_config(page_title="AAII Sentiment & S&P 500 Dashboard", layout="wide")
@@ -373,63 +374,144 @@ with tab8:
 
 
 
-# ----------------- TAB 9 ------------------------
-import yfinance as yf
-import pandas as pd
-import numpy as np
-import datetime
-import matplotlib.pyplot as plt
-from matplotlib.dates import DateFormatter
-from tqdm import tqdm
+# ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
+with tab9:
+    st.markdown("## 😱 Fear & Greed Index")
+    st.markdown("""
+    This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.  
+    The final score ranges from 0 (extreme fear) to 100 (extreme greed). Each indicator contributes equally.
 
-# Téléchargement depuis 2007
-start_date = "2007-01-01"
-end_date = datetime.datetime.today().strftime("%Y-%m-%d")
+    ####🔖 How it's calculated:
+    - **Market Momentum**: S&P 500 vs. 125-day moving average  
+    - **Stock Price Strength**: % above moving average  
+    - **Volatility**: Inverted VIX (fear proxy)  
+    - **Breadth**: HYG (risk appetite) vs 30-day MA  
+    - **Put/Call Proxy**: VIX score (duplicated)  
+    - **Junk Bond Demand**: HYG / TLT  
+    - **Safe Haven Demand**: SPY / TLT  
 
-tickers = ["^GSPC", "^VIX", "HYG", "SPY", "TLT"]
-data = yf.download(tickers, start=start_date, end=end_date)["Close"]
-data.dropna(inplace=True)
+    
+    We also implement a **daily rebalancing strategy**:
+    - If score > 70 ➔ invest 100% in SPY (risk-on)  
+    - If score < 30 ➔ invest 100% in TLT (risk-off)  
+    - Else ➔ equal weight SPY/TLT
+    """)
 
-# Moyennes mobiles
-data["SP500_MA125"] = data["^GSPC"].rolling(window=125).mean()
-data["HYG_MA30"] = data["HYG"].rolling(window=30).mean()
+    # -- Load Data
+    @st.cache_data(show_spinner="📦 Downloading Yahoo Finance data...")
+    def load_yahoo_data(start, end):
+        try:
+            sp500 = yf.download("^GSPC", start=start, end=end, progress=False)["Close"]
+            vix   = yf.download("^VIX",   start=start, end=end, progress=False)["Close"]
+            hyg   = yf.download("HYG",    start=start, end=end, progress=False)["Close"]
+            spy   = yf.download("SPY",    start=start, end=end, progress=False)["Close"]
+            tlt   = yf.download("TLT",    start=start, end=end, progress=False)["Close"]
+        except Exception as e:
+            return None, str(e)
 
-# Fonction de calcul
-def calculate_fear_greed_index(row):
-    try:
-        momentum = 100 * (row["^GSPC"] - row["SP500_MA125"]) / row["SP500_MA125"]
-        recent = data.loc[:row.name].tail(125)
-        strength = 100 * np.mean(recent["^GSPC"] > recent["SP500_MA125"])
-        vix_z = (row["^VIX"] - data["^VIX"].mean()) / data["^VIX"].std()
-        volatility = 100 - (vix_z * 20 + 50)
-        breadth = 100 * (row["HYG"] - row["HYG_MA30"]) / row["HYG_MA30"]
-        put_call = volatility
-        junk_bond = 100 * (row["HYG"] / row["TLT"]) - 50
-        safe_haven = 100 * (row["SPY"] / row["TLT"]) - 50
-        components = [momentum, strength, volatility, breadth, put_call, junk_bond, safe_haven]
-        normalized = [min(max(c, 0), 100) for c in components]
-        return np.mean(normalized)
-    except:
-        return np.nan
+        if any(x is None or x.empty for x in [sp500, vix, hyg, spy, tlt]):
+            return None, "One or more data series failed to load."
 
-# Application avec barre de progression
-tqdm.pandas()
-data["FearGreedIndex"] = data.progress_apply(calculate_fear_greed_index, axis=1)
-data.dropna(subset=["FearGreedIndex"], inplace=True)
+        df = pd.concat([sp500, vix, hyg, spy, tlt], axis=1)
+        df.columns = ["SP500", "VIX", "HYG", "SPY", "TLT"]
+        df.dropna(inplace=True)
+        return df, None
 
-# Graphique
-fig, ax = plt.subplots(figsize=(12, 6))
-ax.plot(data.index, data["FearGreedIndex"], color="black", label="Fear & Greed Index")
-ax.axhspan(0, 25, color='#ffcccc', alpha=0.5, label="Extreme Fear")
-ax.axhspan(25, 50, color='#fff2cc', alpha=0.5, label="Fear")
-ax.axhspan(50, 75, color='#d9f2d9', alpha=0.5, label="Greed")
-ax.axhspan(75, 100, color='#b6d7a8', alpha=0.5, label="Extreme Greed")
-ax.set_title("Historical Fear & Greed Index (2007–Today)")
-ax.set_ylabel("Index Value (0–100)")
-ax.set_ylim(0, 100)
-ax.legend()
-ax.xaxis.set_major_formatter(DateFormatter("%Y"))
+    start = datetime(2007, 1, 1)
+    end = datetime.today()
 
-plt.tight_layout()
-plt.grid(True)
-plt.show()
+    df, error_msg = load_yahoo_data(start, end)
+    if error_msg:
+        st.error("❌ Data download failed.")
+        st.code(error_msg)
+        st.stop()
+
+    # ---------------------- FEAR & GREED INDEX CALCULATION ----------------------
+    def compute_fg_scores(df):
+        ma_125 = df["SP500"].rolling(window=125).mean()
+        momentum_score = 100 * (df["SP500"] - ma_125) / ma_125
+
+        strength_score = 100 * (df["SP500"] > ma_125).rolling(30).mean()
+
+        vix_z = (df["VIX"] - df["VIX"].rolling(90).mean()) / df["VIX"].rolling(90).std()
+        vix_score = 100 - (vix_z * 20 + 50)
+
+        hyg_ma = df["HYG"].rolling(window=30).mean()
+        breadth_score = 100 * (df["HYG"] - hyg_ma) / hyg_ma
+
+        putcall_score = vix_score.copy()  # proxy
+        bond_score = 100 * (df["HYG"] / df["TLT"]) - 50
+        safehaven_score = 100 * (df["SPY"] / df["TLT"]) - 50
+
+        components = pd.concat([
+            momentum_score.rename("Momentum"),
+            strength_score.rename("Strength"),
+            vix_score.rename("Volatility"),
+            breadth_score.rename("Breadth"),
+            putcall_score.rename("PutCall"),
+            bond_score.rename("BondDemand"),
+            safehaven_score.rename("SafeHaven")
+        ], axis=1)
+
+        # Clamp all scores between 0 and 100
+        components = components.clip(lower=0, upper=100)
+        components["FG_Score"] = components.mean(axis=1)
+        return components.dropna()
+
+    df_fg = compute_fg_scores(df)
+    latest_score = int(df_fg["FG_Score"].iloc[-1])
+
+    # ---------------------- GAUGE ----------------------
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=latest_score,
+        title={'text': "Fear & Greed Index"},
+        gauge={
+            'axis': {'range': [0, 100]},
+            'bar': {'color': "black"},
+            'steps': [
+                {'range': [0, 25], 'color': '#ffcccc'},
+                {'range': [25, 50], 'color': '#fff2cc'},
+                {'range': [50, 75], 'color': '#d9f2d9'},
+                {'range': [75, 100], 'color': '#b6d7a8'}
+            ]
+        }
+    ))
+    st.plotly_chart(fig, use_container_width=True)
+
+    def fg_label(score):
+        if score < 25:
+            return "😱 Extreme Fear"
+        elif score < 50:
+            return "😨 Fear"
+        elif score < 75:
+            return "😐 Neutral"
+        else:
+            return "😄 Greed"
+
+    st.subheader("📄 Market Sentiment Classification")
+    st.markdown(f"**Current market mood:** {fg_label(latest_score)}  — Score: **{latest_score}/100**")
+
+    # ---------------------- STRATEGY BACKTEST ----------------------
+    st.subheader("📊 Strategy Comparison: F&G vs Buy & Hold")
+
+    df_returns = df[["SPY", "TLT"]].pct_change().dropna()
+    signals = df_fg["FG_Score"].apply(lambda x: "SPY" if x > 70 else "TLT" if x < 30 else "Balanced")
+
+    weights = pd.DataFrame(index=signals.index, columns=["SPY", "TLT"])
+    weights.loc[signals == "SPY"] = [1, 0]
+    weights.loc[signals == "TLT"] = [0, 1]
+    weights.loc[signals == "Balanced"] = [0.5, 0.5]
+    weights = weights.astype(float)
+
+    daily_returns = (weights.shift(1) * df_returns).sum(axis=1)
+    fg_cum = (1 + daily_returns).cumprod()
+    buyhold = (1 + df_returns["SPY"]).cumprod()
+
+    chart_data = pd.DataFrame({
+        "F&G Strategy": fg_cum,
+        "Buy & Hold S&P 500": buyhold
+    })
+
+    st.line_chart(chart_data)
+    st.caption("Cumulative performance of a daily rebalanced strategy based on Fear & Greed Index vs. passive SPY buy-and-hold.")
