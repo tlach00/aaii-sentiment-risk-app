@@ -5,6 +5,10 @@ import datetime
 import numpy as np
 import datetime
 import plotly.graph_objects as go 
+import yfinance as yf
+from datetime import datetime, timedelta
+from scipy.stats import zscore
+
 
 # Sklearn: Preprocessing, Model, Metrics
 from sklearn.preprocessing import StandardScaler
@@ -36,15 +40,16 @@ raw_df = load_raw_excel()
 clean_df = load_clean_data()
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
-    ":file_folder: Raw Excel Viewer",
-    ":chart_with_upwards_trend: Interactive Dashboard",
+    "📁 Raw Excel Viewer",
+    "📈 Interactive Dashboard",
     "🧪 Z-Score Strategy Backtest",
     "🟥 Z-Score Spread Strategy",
     "📊 Weighted Allocation Strategy",
     "🧬 Multi-Factor Strategy",
     "🧠 Deep Q-Learning Strategy",
-    "🧭 Fear & Greed Index", 
-    "CNN F&G replication"
+    "📉 Fear & Greed Index",
+    "😱 CNN F&G replication"
+])
 ])
 
 # ---------------------------- TAB 1 ----------------------------------
@@ -529,123 +534,84 @@ with tab8:
     except Exception:
         st.caption("Last updated: Unavailable")
 
-import streamlit as st
-import yfinance as yf
-import pandas as pd
-import numpy as np
-import datetime
-import plotly.graph_objects as go
-
-import streamlit as st
-import pandas as pd
-import yfinance as yf
-import numpy as np
-import plotly.graph_objects as go
-from datetime import datetime, timedelta
 
 st.set_page_config(page_title="CNN F&G replication", layout="wide")
 
 # ----------------- TAB 9 ------------------------
-st.title("\U0001F631 Fear & Greed Index (Full Version)")
-st.markdown("""
-This index dynamically estimates current market sentiment using 7 equally-weighted indicators:
+import streamlit as st
+st.set_page_config(page_title="CNN F&G replication", layout="wide")
 
-- **Market Momentum** (1M S&P 500 return)
-- **Stock Price Strength** (% stocks above 50-day MA)
-- **Stock Price Breadth** (advancing vs declining volume)
-- **Put/Call Options Ratio** *(inverse)*
-- **Junk Bond Demand** (HYG vs LQD return spread)
-- **Market Volatility** *(inverse VIX)*
-- **Safe Haven Demand** (10Y yield vs 3M yield spread)
 
-Each score is normalized and scaled from 0 (Fear) to 100 (Greed), averaged daily.
-""")
+with tab9:
+    st.markdown("## 😱 Fear & Greed Index (Full Version)")
+    st.markdown("""
+    This index dynamically estimates current market sentiment using 7 equally-weighted indicators:
 
-# --- Date range for data ---
-end = datetime.today()
-start = end - timedelta(days=730)
+    - **Market Momentum** (1M S&P 500 return)  
+    - **Stock Price Strength** (% stocks above 50-day MA)  
+    - **Stock Price Breadth** (advancing vs declining volume)  
+    - **Put/Call Options Ratio** *(inverse)*  
+    - **Junk Bond Demand** (HYG vs LQD return spread)  
+    - **Market Volatility** *(inverse VIX)*  
+    - **Safe Haven Demand** (10Y yield vs 3M yield spread)
 
-# --- Download data ---
-tickers = ["^GSPC", "VIX", "HYG", "LQD", "^IRX", "^TNX"]
-data = yf.download(tickers, start=start, end=end)["Close"]
+    Each score is normalized and scaled from 0 (Fear) to 100 (Greed), averaged daily.
+    """)
 
-# Drop rows with missing values early
-data = data.dropna()
-data.columns = ["SP500", "VIX", "HYG", "LQD", "3M", "10Y"]
+    # Load Yahoo Finance data
+    end = datetime.today()
+    start = end - timedelta(days=5*365)
 
-# --- Calculations ---
-df_all = data.copy()
-index_df = pd.DataFrame(index=df_all.index)
+    tickers = {
+        "SP500": "^GSPC",
+        "VIX": "^VIX",
+        "HYG": "HYG",
+        "LQD": "LQD",
+        "SPY": "SPY",
+        "T10Y": "^TNX",
+        "T3M": "^IRX"
+    }
 
-# 1. Market Momentum: 1M S&P 500 return
-index_df["Momentum"] = df_all["SP500"].pct_change(periods=21)
+    data = {name: yf.download(ticker, start=start, end=end)["Close"] for name, ticker in tickers.items()}
+    df_all = pd.DataFrame(data).dropna()
 
-# 2. Strength: % above 50-day MA (approx. here)
-df_all["SP500_MA50"] = df_all["SP500"].rolling(50).mean()
-index_df["Strength"] = (df_all["SP500"] > df_all["SP500_MA50"]).astype(int)
+    index_df = pd.DataFrame(index=df_all.index)
+    
+    index_df["Momentum"] = df_all["SP500"].pct_change(21)  # 1M return
+    index_df["Strength"] = (df_all["SPY"] > df_all["SPY"].rolling(50).mean()).astype(int) * 100
+    index_df["Breadth"] = index_df["Strength"]
+    index_df["PutCall"] = 1 / (df_all["SPY"].pct_change().rolling(5).std())
+    index_df["JunkSpread"] = (df_all["HYG"] - df_all["LQD"]).rolling(21).mean()
+    index_df["Volatility"] = 1 / df_all["VIX"]
+    index_df["SafeHaven"] = df_all["T10Y"] - df_all["T3M"]
 
-# 3. Breadth (proxy): 1D return direction
-index_df["Breadth"] = (df_all["SP500"].diff() > 0).astype(int)
+    index_df = index_df.dropna()
+    scaled = index_df.apply(zscore).clip(-2, 2)
+    scaled = (scaled + 2) / 4 * 100
+    scaled["F&G Index"] = scaled.mean(axis=1)
 
-# 4. Put/Call Ratio: use inverse VIX as proxy (lower VIX = more greed)
-index_df["PutCall"] = -df_all["VIX"]
+    # Show gauges for each metric (latest values)
+    latest = scaled.iloc[-1]
+    st.markdown("### 🔍 Indicator Scores (Last Value)")
+    cols = st.columns(len(latest))
+    for i, metric in enumerate(latest.index):
+        with cols[i]:
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=int(latest[metric]),
+                title={'text': metric},
+                gauge={'axis': {'range': [0, 100]},
+                       'bar': {'color': "black"},
+                       'steps': [
+                           {'range': [0, 25], 'color': "#f8d7da"},
+                           {'range': [25, 50], 'color': "#fff3cd"},
+                           {'range': [50, 75], 'color': "#d4edda"},
+                           {'range': [75, 100], 'color': "#c3e6cb"},
+                       ]},
+            ))
+            st.plotly_chart(fig, use_container_width=True)
 
-# 5. Junk Bond Demand: HYG - LQD rolling 5d spread
-junk_spread = (df_all["HYG"] - df_all["LQD"]).rolling(5).mean()
-junk_spread.name = "JunkSpread"
-index_df = index_df.join(junk_spread, how="left")
-
-# 6. Volatility (inverse VIX)
-index_df["Volatility"] = -df_all["VIX"]
-
-# 7. Safe Haven Demand: 10Y - 3M spread
-index_df["SafeHaven"] = df_all["10Y"] - df_all["3M"]
-
-# --- Normalize with z-scores ---
-zscore = index_df.apply(lambda x: (x - x.mean()) / x.std())
-scaled = zscore.clip(-2, 2)
-scaled = (scaled + 2) / 4 * 100
-
-# --- Final index ---
-scaled["F&G Index"] = scaled.mean(axis=1)
-latest = scaled.iloc[-1]
-
-# --- Gauges for each metric ---
-st.subheader("\U0001F50D Indicator Scores (Last Value)")
-cols = st.columns(4)
-for i, col in enumerate(cols):
-    key = scaled.columns[i]
-    col.plotly_chart(go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=latest[key],
-        title={"text": key},
-        gauge={"axis": {"range": [0, 100]},
-               "bar": {"color": "black"},
-               "steps": [
-                   {"range": [0, 25], "color": "#f8d7da"},
-                   {"range": [25, 50], "color": "#fff3cd"},
-                   {"range": [50, 75], "color": "#d4edda"},
-                   {"range": [75, 100], "color": "#c3e6cb"}]}
-    )), use_container_width=True)
-
-cols2 = st.columns(4)
-for i, col in enumerate(cols2):
-    if i + 4 < len(scaled.columns) - 1:
-        key = scaled.columns[i + 4]
-        col.plotly_chart(go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=latest[key],
-            title={"text": key},
-            gauge={"axis": {"range": [0, 100]},
-                   "bar": {"color": "black"},
-                   "steps": [
-                       {"range": [0, 25], "color": "#f8d7da"},
-                       {"range": [25, 50], "color": "#fff3cd"},
-                       {"range": [50, 75], "color": "#d4edda"},
-                       {"range": [75, 100], "color": "#c3e6cb"}]}
-        )), use_container_width=True)
-
-# --- Time Series ---
-st.subheader("\U0001F4C8 Fear & Greed Index Trend")
-st.line_chart(scaled["F&G Index"], height=400)
-st.caption(f"Last updated: {scaled.index[-1].strftime('%B %d, %Y')}")
+    # Show trend over time
+    st.markdown("### 🌅 Fear & Greed Index Trend")
+    st.line_chart(scaled["F&G Index"])
+    st.caption(f"Last updated: {scaled.index[-1].strftime('%B %d, %Y')}")
