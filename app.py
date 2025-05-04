@@ -1,23 +1,22 @@
 import streamlit as st
+
+st.set_page_config(page_title="AAII Sentiment Dashboard (Altair)", layout="wide")
+
 import pandas as pd
 import altair as alt
-import datetime
 import numpy as np
-import datetime
-import plotly.graph_objects as go 
+import plotly.graph_objects as go
 import yfinance as yf
 from datetime import datetime, timedelta
 from scipy.stats import zscore
-
+import warnings
+warnings.filterwarnings("ignore")
 
 # Sklearn: Preprocessing, Model, Metrics
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import train_test_split
-import warnings
-warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="AAII Sentiment Dashboard (Altair)", layout="wide")
 st.title(":bar_chart: AAII Sentiment & S&P 500 Dashboard")
 
 @st.cache_data
