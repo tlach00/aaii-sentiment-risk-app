@@ -446,26 +446,53 @@ with tab7:
 
 
 # ---------------------------- TAB 8 ----------------------------------
+# 🔹 Tab 8: Fear & Greed Index (Dynamic Version)
 with tab8:
-    st.markdown("## 🧭 Fear & Greed Index (Static Version)")
-    st.markdown("This indicator displays the current market sentiment on a scale from 0 (Extreme Fear) to 100 (Greed).")
+    st.markdown("""
+    ### 🔹 Fear & Greed Index (Dynamic Version)
+    This indicator dynamically estimates current market sentiment based on AAII bullish/bearish sentiment and price momentum.
+    """)
 
-    # Static value (you can make it dynamic later)
-    sentiment_score = 43
+    import plotly.graph_objects as go
 
-    fig = go.Figure(go.Indicator(
+    df_fg = clean_df.copy()
+    df_fg["Spread"] = df_fg["Bullish"] - df_fg["Bearish"]
+    df_fg["Momentum"] = df_fg["SP500_Close"].pct_change(4)
+    df_fg.dropna(inplace=True)
+
+    df_fg["Z_Bullish"] = zscore(df_fg["Bullish"])
+    df_fg["Z_Spread"] = zscore(df_fg["Spread"])
+    df_fg["Z_Momentum"] = zscore(df_fg["Momentum"])
+
+    df_fg["FG_Raw"] = (
+        df_fg["Z_Bullish"] * 0.4 +
+        df_fg["Z_Spread"] * 0.4 +
+        df_fg["Z_Momentum"] * 0.2
+    )
+
+    # Normalize to 0-100
+    def scale_fg(x):
+        return int(np.clip((x * 15 + 50), 0, 100))
+
+    sentiment_score = scale_fg(df_fg["FG_Raw"].iloc[-1])
+    fg_prev = scale_fg(df_fg["FG_Raw"].iloc[-2])
+    fg_1w = scale_fg(df_fg["FG_Raw"].iloc[-2])
+    fg_1m = scale_fg(df_fg["FG_Raw"].iloc[-4])
+    fg_1y = scale_fg(df_fg["FG_Raw"].iloc[-52])
+
+    gauge = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = sentiment_score,
         domain = {'x': [0, 1], 'y': [0, 1]},
-        title = {'text': "Fear & Greed Score"},
+        title = {'text': "Fear & Greed Index"},
         gauge = {
             'axis': {'range': [0, 100]},
             'bar': {'color': "black"},
             'steps': [
-                {'range': [0, 25], 'color': '#ffcccc'},         # Extreme Fear
-                {'range': [25, 50], 'color': '#ffebcc'},        # Fear
-                {'range': [50, 75], 'color': '#d6f5d6'},        # Greed
-                {'range': [75, 100], 'color': '#b3ffcc'}        # Extreme Greed
+                {'range': [0, 25], 'color': '#fce4e4'},
+                {'range': [25, 50], 'color': '#fff5cc'},
+                {'range': [50, 75], 'color': '#e0f2e9'},
+                {'range': [75, 100], 'color': '#c6efce'},
             ],
             'threshold': {
                 'line': {'color': "black", 'width': 4},
@@ -475,4 +502,16 @@ with tab8:
         }
     ))
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(gauge, use_container_width=True)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("### 🕰️ Historical Sentiment Snapshots")
+        st.metric("Previous Close", "Neutral" if fg_prev > 45 and fg_prev < 55 else ("Greed" if fg_prev >= 55 else "Fear"), fg_prev)
+        st.metric("1 Week Ago", "Greed" if fg_1w >= 55 else ("Neutral" if fg_1w >= 45 else "Fear"), fg_1w)
+    with col2:
+        st.markdown("# \n")
+        st.metric("1 Month Ago", "Greed" if fg_1m >= 55 else ("Neutral" if fg_1m >= 45 else "Fear"), fg_1m)
+        st.metric("1 Year Ago", "Greed" if fg_1y >= 55 else ("Neutral" if fg_1y >= 45 else "Fear"), fg_1y)
+
+    st.caption(f"Last updated {df_fg.index[-1].strftime('%B %d at %I:%M %p')} ET")
