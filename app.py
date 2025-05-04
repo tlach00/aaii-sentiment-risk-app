@@ -375,6 +375,7 @@ with tab8:
 
 
 # ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
+# ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
 with tab9:
     st.markdown("## 😱 Fear & Greed Index")
     st.markdown("""
@@ -392,12 +393,6 @@ with tab9:
         - Safe Haven Demand: SPY vs TLT relative price
         - Junk Bond Demand: HYG vs LQD relative price
     """)
-
-    import yfinance as yf
-    import pandas as pd
-    import numpy as np
-    import datetime
-    import plotly.graph_objects as go
 
     end = datetime.datetime.today()
     start = end - datetime.timedelta(days=365 * 15)
@@ -450,8 +445,11 @@ with tab9:
         fng_df["FNG_Index"] = fng_df.mean(axis=1)
         fng_df.dropna(inplace=True)
 
-        # Gauge
+        # Extract latest value and date
         latest_score = int(fng_df["FNG_Index"].iloc[-1])
+        latest_date = fng_df.index[-1].strftime("%B %d, %Y")
+
+        # Gauge chart
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=latest_score,
@@ -469,6 +467,7 @@ with tab9:
         ))
         st.plotly_chart(fig, use_container_width=True)
 
+        # Label
         def fg_label(score):
             if score < 25:
                 return "😱 Extreme Fear"
@@ -480,9 +479,9 @@ with tab9:
                 return "😄 Greed"
 
         st.subheader("📊 Market Sentiment Classification")
-        st.markdown(f"**Current market mood:** {fg_label(latest_score)} — Score: **{latest_score}/100**")
+        st.markdown(f"**Current market mood on {latest_date}:** {fg_label(latest_score)} — Score: **{latest_score}/100**")
 
-        # Historical line chart
+        # Historical chart
         st.subheader("📈 Historical Fear & Greed Index (Since 2007)")
         st.line_chart(fng_df["FNG_Index"])
 
