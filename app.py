@@ -382,16 +382,16 @@ with tab9:
     This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.
 
     - The final score ranges from 0 (extreme fear) to 100 (extreme greed).
-    - Each indicator contributes equally and is normalized.
+    - Each indicator contributes equally and is normalized using percentile ranks.
     - Data is fetched from Yahoo Finance and covers 2007 to today.
     - Sources used:
         - Market Momentum: S&P 500 vs. 125-day moving average
-        - Stock Price Strength: % above 125-day MA (approximation of net 52-week highs/lows)
-        - Market Breadth: McClellan Volume Summation proxy (SPY volume z-score)
-        - Put/Call Ratio: 5-day moving average of put/call ratio (simulated)
+        - Stock Price Strength: % above 125-day MA
+        - Market Breadth: average 20-day return
+        - Put/Call Ratio: simulated with VIX z-score
         - Market Volatility: VIX vs. 50-day MA
-        - Safe Haven Demand: SPY vs TLT relative price
-        - Junk Bond Demand: HYG vs LQD relative price
+        - Safe Haven Demand: SPY vs TLT
+        - Junk Bond Demand: HYG vs LQD
     """)
 
     import yfinance as yf
@@ -417,14 +417,14 @@ with tab9:
         data.columns = list(tickers.keys())
         data.dropna(inplace=True)
 
-        # Calculations
+        # Raw indicators
         momentum_ma = data["SP500"].rolling(window=125).mean()
         momentum = 100 * (data["SP500"] - momentum_ma) / momentum_ma
 
         strength = 100 * (data["SP500"] > momentum_ma).rolling(window=50).mean()
 
         spy_returns = data["SPY"].pct_change()
-        breadth = 100 * spy_returns.rolling(20).mean()
+        breadth = spy_returns.rolling(20).mean() * 100
 
         put_call = 100 - (data["VIX"].rolling(5).mean() - data["VIX"].mean()) / data["VIX"].std() * 20
 
@@ -434,24 +434,23 @@ with tab9:
         safe_haven = (data["SPY"] / data["TLT"]).pct_change().rolling(20).mean() * 100
         junk_demand = (data["HYG"] / data["LQD"]).pct_change().rolling(20).mean() * 100
 
-        def normalize(series):
-            z = (series - series.mean()) / series.std()
-            return 50 + z * 10
+        def percentile_scale(series):
+            return series.rank(pct=True) * 100
 
         fng_df = pd.DataFrame({
-            "momentum": normalize(momentum),
-            "strength": normalize(strength),
-            "breadth": normalize(breadth),
-            "putcall": normalize(put_call),
-            "volatility": normalize(volatility),
-            "safehaven": normalize(safe_haven),
-            "junk": normalize(junk_demand),
+            "momentum": percentile_scale(momentum),
+            "strength": percentile_scale(strength),
+            "breadth": percentile_scale(breadth),
+            "putcall": percentile_scale(put_call),
+            "volatility": percentile_scale(volatility),
+            "safehaven": percentile_scale(safe_haven),
+            "junk": percentile_scale(junk_demand),
         })
 
         fng_df["FNG_Index"] = fng_df.mean(axis=1)
         fng_df.dropna(inplace=True)
 
-        # Extract latest value and date
+        # Latest values
         latest_score = int(fng_df["FNG_Index"].iloc[-1])
         latest_date = fng_df.index[-1].strftime("%B %d, %Y")
 
@@ -473,7 +472,6 @@ with tab9:
         ))
         st.plotly_chart(fig, use_container_width=True)
 
-        # Label
         def fg_label(score):
             if score < 25:
                 return "😱 Extreme Fear"
@@ -494,3 +492,4 @@ with tab9:
     except Exception as e:
         st.error("❌ Error fetching or processing data.")
         st.exception(e)
+
