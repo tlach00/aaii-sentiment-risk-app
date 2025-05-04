@@ -512,4 +512,5 @@ with tab8:
         cols[i].metric(label, sentiment, val)
 
     # Footer with timestamp
-    st.caption(f"Last updated {df_fg.index[-1].strftime('%B %d at %I:%M %p')} ET")
+    last_date = df_fg["Date"].iloc[-1] if "Date" in df_fg.columns else clean_df["Date"].iloc[-1]
+    st.caption(f"Last updated {last_date.strftime('%B %d at %I:%M %p')} ET")
