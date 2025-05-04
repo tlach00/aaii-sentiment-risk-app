@@ -536,97 +536,63 @@ with tab8:
 
 
 # ----------------- TAB 9 ------------------------
-# ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
-with tab9:
-    st.markdown("## 😱 Fear & Greed Index")
-    st.markdown("""
-    This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.  
-    
-    - The final score ranges from 0 (extreme fear) to 100 (extreme greed).
-    - Each indicator contributes equally and is normalized.
-    - Data is fetched from Yahoo Finance and covers 2007 to today.
-    
-    We also implement a **daily rebalancing strategy**:
-    - If score > 70 → invest 100% in SPY (risk-on)
-    - If score < 30 → invest 100% in TLT (risk-off)
-    - Else → equal weight SPY/TLT
-    """)
 
-    # Fetch data from Yahoo Finance
-    start = "2007-01-01"
-    end = datetime.datetime.today().strftime('%Y-%m-%d')
-    tickers = ["^GSPC", "^VIX", "HYG", "SPY", "TLT"]
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import datetime
+import matplotlib.pyplot as plt
+from matplotlib.dates import DateFormatter
+from tqdm import tqdm
+
+# Téléchargement depuis 2007
+start_date = "2007-01-01"
+end_date = datetime.datetime.today().strftime("%Y-%m-%d")
+
+tickers = ["^GSPC", "^VIX", "HYG", "SPY", "TLT"]
+data = yf.download(tickers, start=start_date, end=end_date)["Close"]
+data.dropna(inplace=True)
+
+# Moyennes mobiles
+data["SP500_MA125"] = data["^GSPC"].rolling(window=125).mean()
+data["HYG_MA30"] = data["HYG"].rolling(window=30).mean()
+
+# Fonction de calcul
+def calculate_fear_greed_index(row):
     try:
-        data = yf.download(tickers, start=start, end=end)["Close"]
-        if isinstance(data.columns, pd.MultiIndex):
-            data.columns = data.columns.droplevel(0)
-    except Exception as e:
-        st.error("Failed to fetch data.")
-        st.exception(e)
-        st.stop()
+        momentum = 100 * (row["^GSPC"] - row["SP500_MA125"]) / row["SP500_MA125"]
+        recent = data.loc[:row.name].tail(125)
+        strength = 100 * np.mean(recent["^GSPC"] > recent["SP500_MA125"])
+        vix_z = (row["^VIX"] - data["^VIX"].mean()) / data["^VIX"].std()
+        volatility = 100 - (vix_z * 20 + 50)
+        breadth = 100 * (row["HYG"] - row["HYG_MA30"]) / row["HYG_MA30"]
+        put_call = volatility
+        junk_bond = 100 * (row["HYG"] / row["TLT"]) - 50
+        safe_haven = 100 * (row["SPY"] / row["TLT"]) - 50
+        components = [momentum, strength, volatility, breadth, put_call, junk_bond, safe_haven]
+        normalized = [min(max(c, 0), 100) for c in components]
+        return np.mean(normalized)
+    except:
+        return np.nan
 
-    data.dropna(inplace=True)
+# Application avec barre de progression
+tqdm.pandas()
+data["FearGreedIndex"] = data.progress_apply(calculate_fear_greed_index, axis=1)
+data.dropna(subset=["FearGreedIndex"], inplace=True)
 
-    # Compute indicators
-    ma_125 = data["^GSPC"].rolling(window=125).mean()
-    momentum_score = 100 * (data["^GSPC"] - ma_125) / ma_125
+# Graphique
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.plot(data.index, data["FearGreedIndex"], color="black", label="Fear & Greed Index")
+ax.axhspan(0, 25, color='#ffcccc', alpha=0.5, label="Extreme Fear")
+ax.axhspan(25, 50, color='#fff2cc', alpha=0.5, label="Fear")
+ax.axhspan(50, 75, color='#d9f2d9', alpha=0.5, label="Greed")
+ax.axhspan(75, 100, color='#b6d7a8', alpha=0.5, label="Extreme Greed")
+ax.set_title("Historical Fear & Greed Index (2007–Today)")
+ax.set_ylabel("Index Value (0–100)")
+ax.set_ylim(0, 100)
+ax.legend()
+ax.xaxis.set_major_formatter(DateFormatter("%Y"))
 
-    strength_score = 100 * (data["^GSPC"] > ma_125).astype(int).rolling(window=30).mean()
-
-    vix_z = (data["^VIX"] - data["^VIX"].rolling(90).mean()) / data["^VIX"].rolling(90).std()
-    vix_score = 100 - (vix_z * 20 + 50)
-
-    hyg_ma = data["HYG"].rolling(window=30).mean()
-    breadth_score = 100 * (data["HYG"] - hyg_ma) / hyg_ma
-
-    putcall_score = vix_score.copy()
-
-    bond_score = 100 * (data["HYG"] / data["TLT"]) - 50
-    safehaven_score = 100 * (data["SPY"] / data["TLT"]) - 50
-
-    # Combine and normalize
-    df_fg = pd.DataFrame({
-        "Momentum": momentum_score,
-        "Strength": strength_score,
-        "Volatility": vix_score,
-        "Breadth": breadth_score,
-        "PutCall": putcall_score,
-        "Bond": bond_score,
-        "SafeHaven": safehaven_score
-    })
-
-    df_fg = df_fg.clip(0, 100)
-    df_fg["FG_Score"] = df_fg.mean(axis=1)
-
-    # Gauge Chart
-    latest_score = int(df_fg["FG_Score"].iloc[-1])
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=latest_score,
-        title={'text': "Fear & Greed Index"},
-        gauge={
-            'axis': {'range': [0, 100]},
-            'bar': {'color': "black"},
-            'steps': [
-                {'range': [0, 25], 'color': '#ffcccc'},
-                {'range': [25, 50], 'color': '#fff2cc'},
-                {'range': [50, 75], 'color': '#d9f2d9'},
-                {'range': [75, 100], 'color': '#b6d7a8'},
-            ],
-        }
-    ))
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Label
-    def fg_label(score):
-        if score < 25:
-            return "😱 Extreme Fear"
-        elif score < 50:
-            return "😨 Fear"
-        elif score < 75:
-            return "😐 Neutral"
-        else:
-            return "😄 Greed"
-
-    st.subheader("🧭 Market Sentiment Classification")
-    st.markdown(f"**Current market mood:** {fg_label(latest_score)} — Score: **{latest_score}/100**")
+plt.tight_layout()
+plt.grid(True)
+plt.show()
