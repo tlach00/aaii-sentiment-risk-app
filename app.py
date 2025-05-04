@@ -241,17 +241,22 @@ with tab8:
     st.markdown("### 🔷 Fear & Greed Index")
     st.write("This indicator dynamically estimates current market sentiment based on AAII bullish/bearish sentiment and price momentum.")
     st.markdown("*The score is the average of two normalized components: the Bull-Bear sentiment spread and the 4-week return of the S&P 500.*")
-    # Compute a simple dynamic fear & greed score (0–100 scale)
+
+    # Ensure the data is prepared correctly
     df_fg = clean_df.copy()
+    df_fg = df_fg.dropna(subset=["Bullish", "Bearish", "SP500_Close"])
     df_fg["BullBearSpread"] = df_fg["Bullish"] - df_fg["Bearish"]
     df_fg["Momentum"] = df_fg["SP500_Close"].pct_change(4)
+
     # Normalize both components to [0, 1] then scale to 100
     bb_scaled = (df_fg["BullBearSpread"] - df_fg["BullBearSpread"].min()) / (df_fg["BullBearSpread"].max() - df_fg["BullBearSpread"].min())
     mo_scaled = (df_fg["Momentum"] - df_fg["Momentum"].min()) / (df_fg["Momentum"].max() - df_fg["Momentum"].min())
     df_fg["FG_Score"] = ((bb_scaled + mo_scaled) / 2 * 100).clip(0, 100)
-    df_fg = df_fg.dropna()
+    df_fg.dropna(inplace=True)
+
     # Latest score
     current_score = int(df_fg["FG_Score"].iloc[-1])
+
     # Gauge chart
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
@@ -269,6 +274,7 @@ with tab8:
         }
     ))
     st.plotly_chart(fig, use_container_width=True)
+
     # Sentiment label with explanation
     def get_sentiment_label(score):
         if score < 25:
@@ -279,6 +285,7 @@ with tab8:
             return "Greed"
         else:
             return "Extreme Greed"
+
     sentiment_label = get_sentiment_label(current_score)
     label_descriptions = {
         "Extreme Fear": "🔴 **Extreme Fear** – Investors are very worried.",
@@ -289,6 +296,7 @@ with tab8:
     }
     description = label_descriptions.get(sentiment_label, "")
     st.markdown(f"<h2 style='text-align: center;'>{description}</h2>", unsafe_allow_html=True)
+
     # Historical Sentiment Snapshots
     st.subheader("🕰️ Historical Sentiment Snapshots")
     dates = {
@@ -299,11 +307,15 @@ with tab8:
     }
     cols = st.columns(len(dates))
     for i, (label, idx) in enumerate(dates.items()):
-        val = int(df_fg["FG_Score"].iloc[idx])
-        cols[i].metric(label, get_sentiment_label(val), val)
+        try:
+            val = int(df_fg["FG_Score"].iloc[idx])
+            cols[i].metric(label, get_sentiment_label(val), val)
+        except IndexError:
+            cols[i].metric(label, "N/A", "")
+
     # Last updated
     try:
-        st.caption(f"Last updated {df_fg['Date'].iloc[-1].strftime('%B %d at %I:%M %p')} ET")
+        st.caption(f"Last updated {df_fg.index[-1].strftime('%B %d at %I:%M %p')} ET")
     except Exception:
         st.caption("Last updated: Unavailable")
 
