@@ -445,102 +445,71 @@ with tab7:
     st.write(action_counts_test)
 
 # ---------------------------- TAB 8 ----------------------------------
+    def get_sentiment_label(score):
+        if score < 25:
+            return "Extreme Fear"
+        elif score < 50:
+            return "Fear"
+        elif score < 75:
+            return "Greed"
+        else:
+            return "Extreme Greed"
 with tab8:
-    import plotly.graph_objects as go
+    st.markdown("### 🔷 Fear & Greed Index (Dynamic Version)")
+    st.markdown("This indicator dynamically estimates current market sentiment based on AAII bullish/bearish sentiment and price momentum.")
 
-    st.markdown("## 🔷 Fear & Greed Index (Dynamic Version)")
-    st.write("This indicator dynamically estimates current market sentiment based on AAII bullish/bearish sentiment and price momentum.")
-
-    # Compute FG Score from clean_df
+    # Compute dynamic score
     df_fg = clean_df.copy()
-    df_fg["Momentum"] = df_fg["SP500_Close"].pct_change(4)
     df_fg["Spread"] = df_fg["Bullish"] - df_fg["Bearish"]
-
-    z_window = 15
-    for col in ["Bullish", "Spread", "Momentum"]:
-        df_fg[f"Z_{col}"] = (df_fg[col] - df_fg[col].rolling(z_window).mean()) / df_fg[col].rolling(z_window).std()
-
-    df_fg["Z_Combined"] = df_fg[["Z_Bullish", "Z_Spread", "Z_Momentum"]].mean(axis=1)
-    df_fg["FG_Score"] = ((df_fg["Z_Combined"] - df_fg["Z_Combined"].min()) /
-                         (df_fg["Z_Combined"].max() - df_fg["Z_Combined"].min()) * 100).clip(0, 100)
-
+    df_fg["Momentum"] = df_fg["SP500_Close"].pct_change(4)
     df_fg.dropna(inplace=True)
 
-    # Get current score safely
-    try:
-        current_score = int(round(float(df_fg["FG_Score"].iloc[-1])))
-    except Exception:
-        current_score = 50  # fallback value
+    # Normalize features to 0-100 scale (optional: z-score first)
+    df_fg["Norm_Spread"] = 100 * (df_fg["Spread"] - df_fg["Spread"].min()) / (df_fg["Spread"].max() - df_fg["Spread"].min())
+    df_fg["Norm_Momentum"] = 100 * (df_fg["Momentum"] - df_fg["Momentum"].min()) / (df_fg["Momentum"].max() - df_fg["Momentum"].min())
 
-    # Gauge chart
+    df_fg["FG_Score"] = (df_fg["Norm_Spread"] + df_fg["Norm_Momentum"]) / 2
+
+    current_score = int(df_fg["FG_Score"].iloc[-1])
+    label = get_sentiment_label(current_score)
+
+    # ----------------------------
+    # Gauge Plot
+    # ----------------------------
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=current_score,
-        domain={'x': [0, 1], 'y': [0, 1]},
         title={'text': "Fear & Greed Index"},
         gauge={
             'axis': {'range': [0, 100]},
-            'bar': {'color': 'black'},
+            'bar': {'color': "black"},
             'steps': [
-                {'range': [0, 25], 'color': '#f8d7da'},
-                {'range': [25, 50], 'color': '#fff3cd'},
-                {'range': [50, 75], 'color': '#d4edda'},
-                {'range': [75, 100], 'color': '#c3e6cb'}
-            ]
+                {'range': [0, 25], 'color': "#fddede"},
+                {'range': [25, 50], 'color': "#faf4c0"},
+                {'range': [50, 75], 'color': "#d3f8d3"},
+                {'range': [75, 100], 'color': "#b0eac0"}
+            ],
         }
     ))
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # Snapshot display
-    st.markdown("### 🕰️ Historical Sentiment Snapshots")
-
-    def get_snapshot_score(offset_weeks):
-        idx = -1 - offset_weeks
-        if abs(idx) <= len(df_fg):
-            try:
-                return int(round(float(df_fg["FG_Score"].iloc[idx])))
-            except:
-                return None
-        return None
-
+    # ----------------------------
+    # Sentiment Snapshots
+    # ----------------------------
+    st.subheader("🧭 Historical Sentiment Snapshots")
     snapshots = {
-        "Previous Close": get_snapshot_score(1),
-        "1 Week Ago": get_snapshot_score(2),
-        "1 Month Ago": get_snapshot_score(5),
-        "1 Year Ago": get_snapshot_score(52)
+        "Previous Close": -1,
+        "1 Week Ago": -2,
+        "1 Month Ago": -4,
+        "1 Year Ago": -52,
     }
 
-    col1, col2 = st.columns(2)
-    with col1:
-        for label in ["Previous Close", "1 Week Ago"]:
-            val = snapshots[label]
-            if val is not None:
-                st.metric(label, get_sentiment_label(val), val)
-            else:
-                st.write(f"{label}: N/A")
+    cols = st.columns(4)
+    for i, (label, offset) in enumerate(snapshots.items()):
+        val = int(df_fg["FG_Score"].iloc[offset])
+        sentiment = get_sentiment_label(val)
+        cols[i].metric(label, sentiment, val)
 
-    with col2:
-        for label in ["1 Month Ago", "1 Year Ago"]:
-            val = snapshots[label]
-            if val is not None:
-                st.metric(label, get_sentiment_label(val), val)
-            else:
-                st.write(f"{label}: N/A")
-
-    # Last updated
-    try:
-        st.caption(f"Last updated {df_fg.index[-1].strftime('%B %d at %I:%M %p')} ET")
-    except:
-        st.caption("Last updated: N/A")
-
-# Utility function (put this near the top or outside tab blocks)
-def get_sentiment_label(score):
-    if score < 25:
-        return "Extreme Fear"
-    elif score < 50:
-        return "Fear"
-    elif score < 75:
-        return "Greed"
-    else:
-        return "Extreme Greed"
+    # Footer with timestamp
+    st.caption(f"Last updated {df_fg.index[-1].strftime('%B %d at %I:%M %p')} ET")
