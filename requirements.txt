@@ -6,3 +6,4 @@ openpyxl
 statsmodels
 scikit-learn
 torch
+plotly
