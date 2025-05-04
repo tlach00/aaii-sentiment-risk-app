@@ -13,7 +13,6 @@ import warnings
 warnings.filterwarnings("ignore")
 from scipy.stats import zscore
 
-
 st.set_page_config(page_title="AAII Sentiment Dashboard (Altair)", layout="wide")
 st.title(":bar_chart: AAII Sentiment & S&P 500 Dashboard")
 
@@ -45,21 +44,10 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "🧠 Deep Q-Learning Strategy"
 ])
 
-
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
     st.header(":file_folder: Raw AAII Sentiment Excel File")
     st.dataframe(raw_df)
-
-    chart3 = alt.layer(
-        base.mark_line(color='black').encode(y=alt.Y('SP500_Close:Q', title='S&P 500 Price')),
-        base.mark_line(color='green').encode(y=alt.Y('Bullish_MA:Q', title='Bullish Sentiment MA'))
-    ).resolve_scale(y='independent').properties(height=300)
-
-    st.altair_chart(chart3, use_container_width=True)
-
-    st.markdown("### :clipboard: Filtered Data Table")
-    st.dataframe(filtered_df, use_container_width=True, height=400)
 
 # ---------------------------- TAB 2 ----------------------------------
 with tab2:
@@ -118,7 +106,7 @@ with tab2:
     df_ma["Bullish_MA"] = df_ma["Bullish"].rolling(window=ma_window, min_periods=1).mean()
 
     base = alt.Chart(df_ma).encode(x='Date:T')
-   cchart3 = alt.layer(
+    chart3 = alt.layer(
         base.mark_line(color='black').encode(y=alt.Y('SP500_Close:Q', title='S&P 500 Price')),
         base.mark_line(color='green').encode(y=alt.Y('Bullish_MA:Q', title='Bullish Sentiment MA'))
     ).resolve_scale(y='independent').properties(height=300)
