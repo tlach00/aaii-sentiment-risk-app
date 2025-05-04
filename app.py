@@ -16,7 +16,6 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import train_test_split
 import warnings
 warnings.filterwarnings("ignore")
-from scipy.stats import zscore
 
 st.set_page_config(page_title="AAII Sentiment Dashboard (Altair)", layout="wide")
 st.title(":bar_chart: AAII Sentiment & S&P 500 Dashboard")
