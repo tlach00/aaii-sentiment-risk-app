@@ -375,23 +375,22 @@ with tab8:
 
 
 # ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
-# ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
 with tab9:
     st.markdown("## 😱 Fear & Greed Index")
     st.markdown("""
     This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.
 
     - The final score ranges from 0 (extreme fear) to 100 (extreme greed).
-    - Each indicator contributes equally and is normalized using percentiles (CNN-style).
+    - Each indicator contributes equally and is normalized using **z-scores** (more realistic measure).
     - Data is fetched from Yahoo Finance and covers 2007 to today.
     - Sources used:
         - Market Momentum: S&P 500 vs. 125-day moving average
-        - Stock Price Strength: % above 125-day MA (approximation of net 52-week highs/lows)
-        - Market Breadth: McClellan Volume Summation proxy (SPY volume z-score)
-        - Put/Call Ratio: 5-day moving average of put/call ratio (simulated)
+        - Stock Price Strength: % above 125-day MA
+        - Market Breadth: McClellan proxy via SPY return average
+        - Put/Call Ratio proxy: VIX z-score method
         - Market Volatility: VIX vs. 50-day MA
-        - Safe Haven Demand: SPY vs TLT relative price
-        - Junk Bond Demand: HYG vs LQD relative price
+        - Safe Haven Demand: SPY vs TLT
+        - Junk Bond Demand: HYG vs LQD
     """)
 
     import yfinance as yf
@@ -426,7 +425,7 @@ with tab9:
         strength = 100 * (data["SP500"] > momentum_ma).rolling(window=50).mean()
 
         spy_returns = data["SPY"].pct_change()
-        breadth = spy_returns.rolling(20).mean() * 100
+        breadth = 100 * spy_returns.rolling(20).mean()
 
         put_call = 100 - (data["VIX"].rolling(5).mean() - data["VIX"].mean()) / data["VIX"].std() * 20
 
@@ -436,18 +435,19 @@ with tab9:
         safe_haven = (data["SPY"] / data["TLT"]).pct_change().rolling(20).mean() * 100
         junk_demand = (data["HYG"] / data["LQD"]).pct_change().rolling(20).mean() * 100
 
-        # CNN-style percentile normalization
-        def percentile_scale(series):
-            return series.rank(pct=True) * 100
+        # Z-score normalization
+        def normalize(series):
+            z = (series - series.mean()) / series.std()
+            return 50 + z * 10
 
         fng_df = pd.DataFrame({
-            "momentum": percentile_scale(momentum),
-            "strength": percentile_scale(strength),
-            "breadth": percentile_scale(breadth),
-            "putcall": percentile_scale(put_call),
-            "volatility": percentile_scale(volatility),
-            "safehaven": percentile_scale(safe_haven),
-            "junk": percentile_scale(junk_demand),
+            "momentum": normalize(momentum),
+            "strength": normalize(strength),
+            "breadth": normalize(breadth),
+            "putcall": normalize(put_call),
+            "volatility": normalize(volatility),
+            "safehaven": normalize(safe_haven),
+            "junk": normalize(junk_demand),
         })
 
         fng_df["FNG_Index"] = fng_df.mean(axis=1)
@@ -493,7 +493,6 @@ with tab9:
         st.subheader("📉 Historical Fear & Greed Index (Since 2007)")
 
         fig = go.Figure()
-
         fig.add_trace(go.Scatter(
             x=fng_df.index,
             y=fng_df["FNG_Index"],
@@ -520,3 +519,4 @@ with tab9:
     except Exception as e:
         st.error("❌ Error fetching or processing data.")
         st.exception(e)
+
