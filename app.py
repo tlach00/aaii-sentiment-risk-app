@@ -374,23 +374,17 @@ with tab8:
 
 
 
-# ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
+# ------------------------- TAB 9: CNN Fear & Greed Replication + ML Strategy -------------------------
 with tab9:
-    st.markdown("## 😱 Fear & Greed Index")
+    st.markdown("## 😱 Fear & Greed Index + ML Strategy")
     st.markdown("""
-    This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.
+    This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance
+    and runs a logistic regression strategy trained on these features.
 
-    - The final score ranges from 0 (extreme fear) to 100 (extreme greed).
-    - Each indicator contributes equally and is normalized using **z-scores** (more realistic measure).
-    - Data is fetched from Yahoo Finance and covers 2007 to today.
-    - Sources used:
-        - Market Momentum: S&P 500 vs. 125-day moving average
-        - Stock Price Strength: % above 125-day MA
-        - Market Breadth: McClellan proxy via SPY return average
-        - Put/Call Ratio proxy: VIX z-score method
-        - Market Volatility: VIX vs. 50-day MA
-        - Safe Haven Demand: SPY vs TLT
-        - Junk Bond Demand: HYG vs LQD
+    - Each indicator is standardized using z-scores.
+    - The model is trained on data from 2007 to 2020.
+    - The model predicts daily returns from 2020 onward and adjusts position (long, short, neutral).
+    - Strategy performance is compared with Buy & Hold.
     """)
 
     import yfinance as yf
@@ -398,24 +392,16 @@ with tab9:
     import numpy as np
     import datetime
     import plotly.graph_objects as go
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.preprocessing import StandardScaler
 
-    # Define date range
+    # Load data
     end = datetime.datetime.today()
     start = datetime.datetime(2007, 1, 1)
-
-    # Download data
-    tickers = {
-        "SP500": "^GSPC",
-        "VIX": "^VIX",
-        "SPY": "SPY",
-        "TLT": "TLT",
-        "HYG": "HYG",
-        "LQD": "LQD"
-    }
-
+    tickers = ["^GSPC", "^VIX", "SPY", "TLT", "HYG", "LQD"]
     try:
-        data = yf.download(list(tickers.values()), start=start, end=end)["Close"]
-        data.columns = list(tickers.keys())
+        data = yf.download(tickers, start=start, end=end)["Close"]
+        data.columns = ["SP500", "VIX", "SPY", "TLT", "HYG", "LQD"]
         data.dropna(inplace=True)
 
         # Indicators
@@ -435,12 +421,11 @@ with tab9:
         safe_haven = (data["SPY"] / data["TLT"]).pct_change().rolling(20).mean() * 100
         junk_demand = (data["HYG"] / data["LQD"]).pct_change().rolling(20).mean() * 100
 
-        # Z-score normalization
         def normalize(series):
             z = (series - series.mean()) / series.std()
             return 50 + z * 10
 
-        fng_df = pd.DataFrame({
+        features = pd.DataFrame({
             "momentum": normalize(momentum),
             "strength": normalize(strength),
             "breadth": normalize(breadth),
@@ -448,75 +433,64 @@ with tab9:
             "volatility": normalize(volatility),
             "safehaven": normalize(safe_haven),
             "junk": normalize(junk_demand),
-        })
+        }, index=data.index)
 
-        fng_df["FNG_Index"] = fng_df.mean(axis=1)
-        fng_df.dropna(inplace=True)
+        features["target"] = data["SPY"].pct_change().shift(-1)
+        features.dropna(inplace=True)
+        features["label"] = np.where(features["target"] > 0.001, 1, np.where(features["target"] < -0.001, -1, 0))
 
-        # Latest value
-        latest_score = int(fng_df["FNG_Index"].iloc[-1])
-        latest_date = fng_df.index[-1].strftime("%B %d, %Y")
+        # Split
+        split_date = "2020-01-01"
+        X_train = features.loc[:split_date].drop(columns=["target", "label"])
+        y_train = features.loc[:split_date]["label"]
+        X_test = features.loc[split_date:].drop(columns=["target", "label"])
+        returns_test = features.loc[split_date:]["target"]
 
-        # Classification label
-        def fg_label(score):
-            if score < 25:
-                return "😱 Extreme Fear"
-            elif score < 50:
-                return "😨 Fear"
-            elif score < 75:
-                return "😐 Neutral"
-            else:
-                return "😄 Greed"
+        # Scale
+        scaler = StandardScaler()
+        X_train_scaled = scaler.fit_transform(X_train)
+        X_test_scaled = scaler.transform(X_test)
 
-        # Gauge chart
-        gauge_fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=latest_score,
-            title={'text': "Fear & Greed Index"},
-            gauge={
-                'axis': {'range': [0, 100]},
-                'bar': {'color': "black"},
-                'steps': [
-                    {'range': [0, 25], 'color': '#ffcccc'},
-                    {'range': [25, 50], 'color': '#fff2cc'},
-                    {'range': [50, 75], 'color': '#d9f2d9'},
-                    {'range': [75, 100], 'color': '#b6d7a8'},
-                ],
-            }
+        # Train model
+        model = LogisticRegression(multi_class='ovr', solver='lbfgs', max_iter=1000)
+        model.fit(X_train_scaled, y_train)
+        predictions = model.predict(X_test_scaled)
+
+        # Simulate strategy
+        capital = 10000
+        strat_values = [capital]
+        buy_hold_values = [capital]
+        for i, r in enumerate(returns_test):
+            action = predictions[i]  # -1, 0, or 1
+            daily_return = r * action
+            strat_values.append(strat_values[-1] * (1 + daily_return))
+            buy_hold_values.append(buy_hold_values[-1] * (1 + r))
+
+        # Plot result
+        dates = returns_test.index
+        fig2 = go.Figure()
+        fig2.add_trace(go.Scatter(
+            x=dates,
+            y=strat_values[1:],
+            name="ML Strategy",
+            mode="lines",
+            line=dict(width=2)
         ))
-        st.plotly_chart(gauge_fig, use_container_width=True)
-
-        st.subheader("📊 Market Sentiment Classification")
-        st.markdown(f"**Current market mood on {latest_date}:** {fg_label(latest_score)} — Score: **{latest_score}/100**")
-
-        # Historical line chart with shaded zones
-        st.subheader("📉 Historical Fear & Greed Index (Since 2007)")
-
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=fng_df.index,
-            y=fng_df["FNG_Index"],
-            mode='lines',
-            name='F&G Index',
-            line=dict(color='steelblue')
+        fig2.add_trace(go.Scatter(
+            x=dates,
+            y=buy_hold_values[1:],
+            name="Buy & Hold (S&P 500)",
+            mode="lines",
+            line=dict(color="black", dash="dash")
         ))
-
-        # Add shaded zones
-        fig.add_shape(type="rect", x0=fng_df.index[0], x1=fng_df.index[-1],
-                      y0=0, y1=25, fillcolor="#ffcccc", opacity=0.3, line_width=0, layer="below")
-        fig.add_shape(type="rect", x0=fng_df.index[0], x1=fng_df.index[-1],
-                      y0=75, y1=100, fillcolor="#d9f2d9", opacity=0.3, line_width=0, layer="below")
-
-        fig.update_layout(
-            yaxis=dict(title='Index Value (0–100)', range=[0, 100]),
-            xaxis=dict(title='Date'),
-            showlegend=False,
+        fig2.update_layout(
+            title="ML Strategy Based on F&G Features vs Buy & Hold",
+            xaxis_title="Date",
+            yaxis_title="Portfolio Value",
             height=400
         )
-
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig2, use_container_width=True)
 
     except Exception as e:
         st.error("❌ Error fetching or processing data.")
         st.exception(e)
-
