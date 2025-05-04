@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from scipy.stats import zscore
 import warnings
 warnings.filterwarnings("ignore")
-
+st.set_page_config(page_title="AAII Sentiment & S&P 500 Dashboard", layout="wide")
 # Sklearn: Preprocessing, Model, Metrics
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPRegressor
