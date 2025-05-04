@@ -540,8 +540,10 @@ with tab9:
     \nThe final score ranges from 0 (extreme fear) to 100 (extreme greed). Each indicator contributes equally.
     """)
 
-    end = datetime.datetime.today()
-    start = end - datetime.timedelta(days=365)
+    # ✅ FIXED: Proper datetime import
+    from datetime import datetime, timedelta
+    end = datetime.today()
+    start = end - timedelta(days=365)
 
     # Download Yahoo Finance data
     try:
@@ -574,12 +576,12 @@ with tab9:
     vix_z = (df["VIX"] - df["VIX"].mean()) / df["VIX"].std()
     vix_score = 100 - (vix_z.iloc[-1] * 20 + 50)
 
-    # 4. Stock Price Breadth: Advance-decline proxy using HYG (risk appetite)
+    # 4. Stock Price Breadth: Advance-decline proxy using HYG
     hyg_ma = df["HYG"].rolling(window=30).mean()
     breadth_score = 100 * (df["HYG"].iloc[-1] - hyg_ma.iloc[-1]) / hyg_ma.iloc[-1]
 
-    # 5. Put & Call Options: not available — proxy using VIX/SPY
-    putcall_score = vix_score  # duplicated proxy
+    # 5. Put & Call Options: proxy using VIX/SPY
+    putcall_score = vix_score  # duplicate proxy
 
     # 6. Junk Bond Demand: HYG vs TLT
     bond_score = 100 * (df["HYG"].iloc[-1] / df["TLT"].iloc[-1]) - 50
@@ -587,14 +589,13 @@ with tab9:
     # 7. Safe Haven Demand: SPY vs TLT (inverse)
     safehaven_score = 100 * (df["SPY"].iloc[-1] / df["TLT"].iloc[-1]) - 50
 
-    # Normalize and combine all 7 indicators equally
+    # Normalize and combine
     components = [momentum_score, strength_score, vix_score,
                   breadth_score, putcall_score, bond_score, safehaven_score]
-
     normalized = [min(max(c, 0), 100) for c in components]
     final_score = int(np.mean(normalized))
 
-    # Gauge chart
+    # Gauge Chart
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=final_score,
@@ -610,10 +611,9 @@ with tab9:
             ],
         }
     ))
-
     st.plotly_chart(fig, use_container_width=True)
 
-    # Label
+    # Classification Label
     def fg_label(score):
         if score < 25:
             return "😱 Extreme Fear"
