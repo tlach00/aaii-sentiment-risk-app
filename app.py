@@ -561,8 +561,8 @@ with tab9:
     spy = safe_download("SPY", start, end)
     tlt = safe_download("TLT", start, end)
 
-    if None in [sp500, vix, hyg, spy, tlt]:
-        st.error("❌ Could not retrieve all required data to compute the Fear & Greed Index.")
+    if any(x is None for x in [sp500, vix, hyg, spy, tlt]):
+    st.error("❌ Could not retrieve all required data to compute the Fear & Greed Index.")
     else:
         # 1. Market Momentum
         sp500["MA_125"] = sp500["Close"].rolling(window=125).mean()
