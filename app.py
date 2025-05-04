@@ -46,15 +46,20 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
-    st.header(":file_folder: Raw AAII Sentiment Excel File")
+    st.header("📋 Filtered Data Table (from Interactive Dashboard)")
+    min_date = clean_df["Date"].min().date()
+    max_date = clean_df["Date"].max().date()
+    start_date = pd.to_datetime(min_date)
+    end_date = pd.to_datetime(max_date)
+    filtered_df = clean_df[(clean_df["Date"] >= start_date) & (clean_df["Date"] <= end_date)]
+    st.dataframe(filtered_df, use_container_width=True, height=400)
+
+    st.header("📁 Raw AAII Sentiment Excel File")
     st.dataframe(raw_df)
 
 # ---------------------------- TAB 2 ----------------------------------
 with tab2:
     st.markdown("## :chart_with_upwards_trend: Interactive Dashboard")
-
-    min_date = clean_df["Date"].min().date()
-    max_date = clean_df["Date"].max().date()
 
     start_date, end_date = st.slider(
         "Select a date range:",
@@ -112,9 +117,6 @@ with tab2:
     ).resolve_scale(y='independent').properties(height=300)
 
     st.altair_chart(chart3, use_container_width=True)
-
-    st.markdown("### :clipboard: Filtered Data Table")
-    st.dataframe(filtered_df, use_container_width=True, height=400)
 # ---------------------------- TAB 3 ----------------------------------
 with tab3:
     st.header("🟥 Z-Score Spread Strategy vs. Buy & Hold")
