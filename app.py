@@ -376,7 +376,6 @@ with tab8:
 
 # ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
 with tab9:
-    st.set_page_config(page_title="CNN F&G replication", layout="wide")
     st.markdown("## 😱 Fear & Greed Index")
     st.markdown("""
     This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.
