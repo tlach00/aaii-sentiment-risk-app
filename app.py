@@ -373,8 +373,9 @@ with tab8:
         st.caption("Last updated: Unavailable")
 
 
+# ---------------------------- TAB 9 ----------------------------------
 
-#with tab9:
+with tab9:
     st.markdown("## 😱 Fear & Greed Index")
     st.markdown("""
     This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.
