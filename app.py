@@ -544,55 +544,111 @@ import datetime
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 from tqdm import tqdm
+with tab9:
+    st.markdown("## 😱 Fear & Greed Index")
+    st.markdown("""
+    This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.  
+    - The final score ranges from 0 (extreme fear) to 100 (extreme greed).  
+    - Each indicator contributes equally and is normalized.  
+    - Data is fetched from Yahoo Finance and covers 2007 to today.  
+    - We also implement a **daily rebalancing strategy**:  
+        • If score > 70 → invest 100% in SPY (risk-on)  
+        • If score < 30 → invest 100% in TLT (risk-off)  
+        • Else → equal weight SPY/TLT  
+    """)
 
-# Téléchargement depuis 2007
-start_date = "2007-01-01"
-end_date = datetime.datetime.today().strftime("%Y-%m-%d")
+    import yfinance as yf
+    import datetime
+    import plotly.graph_objects as go
 
-tickers = ["^GSPC", "^VIX", "HYG", "SPY", "TLT"]
-data = yf.download(tickers, start=start_date, end=end_date)["Close"]
-data.dropna(inplace=True)
+    # Pull full history since 2007
+    start = datetime.datetime(2007, 1, 1)
+    end = datetime.datetime.today()
 
-# Moyennes mobiles
-data["SP500_MA125"] = data["^GSPC"].rolling(window=125).mean()
-data["HYG_MA30"] = data["HYG"].rolling(window=30).mean()
+    # Download adjusted close prices
+    tickers = ["^GSPC", "^VIX", "HYG", "SPY", "TLT"]
+    data = yf.download(tickers, start=start, end=end)["Adj Close"]
+    data.columns = tickers
+    data.dropna(inplace=True)
 
-# Fonction de calcul
-def calculate_fear_greed_index(row):
-    try:
-        momentum = 100 * (row["^GSPC"] - row["SP500_MA125"]) / row["SP500_MA125"]
-        recent = data.loc[:row.name].tail(125)
-        strength = 100 * np.mean(recent["^GSPC"] > recent["SP500_MA125"])
-        vix_z = (row["^VIX"] - data["^VIX"].mean()) / data["^VIX"].std()
-        volatility = 100 - (vix_z * 20 + 50)
-        breadth = 100 * (row["HYG"] - row["HYG_MA30"]) / row["HYG_MA30"]
-        put_call = volatility
-        junk_bond = 100 * (row["HYG"] / row["TLT"]) - 50
-        safe_haven = 100 * (row["SPY"] / row["TLT"]) - 50
-        components = [momentum, strength, volatility, breadth, put_call, junk_bond, safe_haven]
-        normalized = [min(max(c, 0), 100) for c in components]
-        return np.mean(normalized)
-    except:
-        return np.nan
+    # Compute indicators
+    df = data.copy()
+    df["SP500_MA125"] = df["^GSPC"].rolling(125).mean()
+    df["HYG_MA30"] = df["HYG"].rolling(30).mean()
+    df["VIX_Z"] = (df["^VIX"] - df["^VIX"].rolling(30).mean()) / df["^VIX"].rolling(30).std()
 
-# Application avec barre de progression
-tqdm.pandas()
-data["FearGreedIndex"] = data.progress_apply(calculate_fear_greed_index, axis=1)
-data.dropna(subset=["FearGreedIndex"], inplace=True)
+    # Scores
+    df["Momentum"] = 100 * (df["^GSPC"] - df["SP500_MA125"]) / df["SP500_MA125"]
+    df["Strength"] = 100 * (df["^GSPC"] > df["SP500_MA125"]).astype(int)
+    df["Volatility"] = 100 - (df["VIX_Z"] * 20 + 50)
+    df["Breadth"] = 100 * (df["HYG"] - df["HYG_MA30"]) / df["HYG_MA30"]
+    df["PutCall"] = df["Volatility"]  # proxy
+    df["JunkDemand"] = 100 * (df["HYG"] / df["TLT"]) - 50
+    df["SafeHaven"] = 100 * (df["SPY"] / df["TLT"]) - 50
 
-# Graphique
-fig, ax = plt.subplots(figsize=(12, 6))
-ax.plot(data.index, data["FearGreedIndex"], color="black", label="Fear & Greed Index")
-ax.axhspan(0, 25, color='#ffcccc', alpha=0.5, label="Extreme Fear")
-ax.axhspan(25, 50, color='#fff2cc', alpha=0.5, label="Fear")
-ax.axhspan(50, 75, color='#d9f2d9', alpha=0.5, label="Greed")
-ax.axhspan(75, 100, color='#b6d7a8', alpha=0.5, label="Extreme Greed")
-ax.set_title("Historical Fear & Greed Index (2007–Today)")
-ax.set_ylabel("Index Value (0–100)")
-ax.set_ylim(0, 100)
-ax.legend()
-ax.xaxis.set_major_formatter(DateFormatter("%Y"))
+    # Final score
+    components = ["Momentum", "Strength", "Volatility", "Breadth", "PutCall", "JunkDemand", "SafeHaven"]
+    df["FG_Index"] = df[components].clip(0, 100).mean(axis=1)
 
-plt.tight_layout()
-plt.grid(True)
-plt.show()
+    # Show latest gauge
+    latest_score = int(df["FG_Index"].iloc[-1])
+
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=latest_score,
+        title={'text': "Fear & Greed Index"},
+        gauge={
+            'axis': {'range': [0, 100]},
+            'bar': {'color': "black"},
+            'steps': [
+                {'range': [0, 25], 'color': '#ffcccc'},
+                {'range': [25, 50], 'color': '#fff2cc'},
+                {'range': [50, 75], 'color': '#d9f2d9'},
+                {'range': [75, 100], 'color': '#b6d7a8'},
+            ],
+        }
+    ))
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Label
+    def fg_label(score):
+        if score < 25:
+            return "😱 Extreme Fear"
+        elif score < 50:
+            return "😨 Fear"
+        elif score < 75:
+            return "😐 Neutral"
+        else:
+            return "😄 Greed"
+
+    st.subheader("📉 Market Sentiment Classification")
+    st.markdown(f"**Current market mood:** `{fg_label(latest_score)}` — Score: **{latest_score}/100**")
+
+    # Backtest strategy: rebalance daily
+    df["SPY_ret"] = df["SPY"].pct_change()
+    df["TLT_ret"] = df["TLT"].pct_change()
+
+    def rebal_weight(score):
+        if score > 70:
+            return (1.0, 0.0)
+        elif score < 30:
+            return (0.0, 1.0)
+        else:
+            return (0.5, 0.5)
+
+    weights = df["FG_Index"].apply(rebal_weight)
+    weights_df = pd.DataFrame(weights.tolist(), index=weights.index, columns=["w_spy", "w_tlt"])
+    df = df.join(weights_df)
+
+    df["strat_ret"] = df["w_spy"] * df["SPY_ret"] + df["w_tlt"] * df["TLT_ret"]
+    df["strat_index"] = (1 + df["strat_ret"]).cumprod()
+    df["spy_index"] = (1 + df["SPY_ret"]).cumprod()
+
+    # Plot performance
+    st.subheader("📈 Backtest: Daily Rebalancing Strategy vs SPY Buy & Hold")
+
+    perf_fig = go.Figure()
+    perf_fig.add_trace(go.Scatter(x=df.index, y=df["strat_index"], mode='lines', name='FG Strategy'))
+    perf_fig.add_trace(go.Scatter(x=df.index, y=df["spy_index"], mode='lines', name='SPY Buy & Hold'))
+    perf_fig.update_layout(title="Cumulative Performance", yaxis_title="Growth of $1", xaxis_title="Date")
+    st.plotly_chart(perf_fig, use_container_width=True)
