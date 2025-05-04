@@ -535,97 +535,62 @@ with tab8:
 
 
 # ----------------- TAB 9 ------------------------
-# ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
-with tab9:
-    st.markdown("## 😱 Fear & Greed Index")
-    st.markdown("""
-    This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.  
-    The final score ranges from 0 (extreme fear) to 100 (extreme greed). Each indicator contributes equally.
-    
-    ### 🧮 How it's calculated:
-    - **Market Momentum**: S&P 500 vs. 125-day moving average  
-    - **Stock Price Strength**: % above moving average  
-    - **Volatility**: Inverted VIX (fear proxy)  
-    - **Breadth**: HYG (risk appetite) vs 30-day MA  
-    - **Put/Call Proxy**: VIX score (duplicated)  
-    - **Junk Bond Demand**: HYG / TLT  
-    - **Safe Haven Demand**: SPY / TLT  
-    """)
+import yfinance as yf
+import pandas as pd
+import numpy as np
+import datetime
+import matplotlib.pyplot as plt
+from matplotlib.dates import DateFormatter
+from tqdm import tqdm
 
-    import yfinance as yf
-    from tqdm import tqdm
-    import altair as alt
+# Téléchargement depuis 2007
+start_date = "2007-01-01"
+end_date = datetime.datetime.today().strftime("%Y-%m-%d")
 
-    start_date = "2007-01-01"
-    end_date = pd.Timestamp.today().strftime("%Y-%m-%d")
-    tickers = ["^GSPC", "^VIX", "HYG", "SPY", "TLT"]
+tickers = ["^GSPC", "^VIX", "HYG", "SPY", "TLT"]
+data = yf.download(tickers, start=start_date, end=end_date)["Close"]
+data.dropna(inplace=True)
 
+# Moyennes mobiles
+data["SP500_MA125"] = data["^GSPC"].rolling(window=125).mean()
+data["HYG_MA30"] = data["HYG"].rolling(window=30).mean()
+
+# Fonction de calcul
+def calculate_fear_greed_index(row):
     try:
-        df = yf.download(tickers, start=start_date, end=end_date)["Close"]
-        df.dropna(inplace=True)
-    except Exception as e:
-        st.error("❌ Failed to download data from Yahoo Finance.")
-        st.exception(e)
-        st.stop()
+        momentum = 100 * (row["^GSPC"] - row["SP500_MA125"]) / row["SP500_MA125"]
+        recent = data.loc[:row.name].tail(125)
+        strength = 100 * np.mean(recent["^GSPC"] > recent["SP500_MA125"])
+        vix_z = (row["^VIX"] - data["^VIX"].mean()) / data["^VIX"].std()
+        volatility = 100 - (vix_z * 20 + 50)
+        breadth = 100 * (row["HYG"] - row["HYG_MA30"]) / row["HYG_MA30"]
+        put_call = volatility
+        junk_bond = 100 * (row["HYG"] / row["TLT"]) - 50
+        safe_haven = 100 * (row["SPY"] / row["TLT"]) - 50
+        components = [momentum, strength, volatility, breadth, put_call, junk_bond, safe_haven]
+        normalized = [min(max(c, 0), 100) for c in components]
+        return np.mean(normalized)
+    except:
+        return np.nan
 
-    df["SP500_MA125"] = df["^GSPC"].rolling(window=125).mean()
-    df["HYG_MA30"] = df["HYG"].rolling(window=30).mean()
+# Application avec barre de progression
+tqdm.pandas()
+data["FearGreedIndex"] = data.progress_apply(calculate_fear_greed_index, axis=1)
+data.dropna(subset=["FearGreedIndex"], inplace=True)
 
-    def compute_fg(row):
-        try:
-            momentum = 100 * (row["^GSPC"] - row["SP500_MA125"]) / row["SP500_MA125"]
-            recent = df.loc[:row.name].tail(125)
-            strength = 100 * np.mean(recent["^GSPC"] > recent["SP500_MA125"])
-            vix_z = (row["^VIX"] - df["^VIX"].mean()) / df["^VIX"].std()
-            volatility = 100 - (vix_z * 20 + 50)
-            breadth = 100 * (row["HYG"] - row["HYG_MA30"]) / row["HYG_MA30"]
-            put_call = volatility
-            junk_bond = 100 * (row["HYG"] / row["TLT"]) - 50
-            safe_haven = 100 * (row["SPY"] / row["TLT"]) - 50
-            scores = [momentum, strength, volatility, breadth, put_call, junk_bond, safe_haven]
-            normalized = [min(max(c, 0), 100) for c in scores]
-            return np.mean(normalized)
-        except:
-            return np.nan
+# Graphique
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.plot(data.index, data["FearGreedIndex"], color="black", label="Fear & Greed Index")
+ax.axhspan(0, 25, color='#ffcccc', alpha=0.5, label="Extreme Fear")
+ax.axhspan(25, 50, color='#fff2cc', alpha=0.5, label="Fear")
+ax.axhspan(50, 75, color='#d9f2d9', alpha=0.5, label="Greed")
+ax.axhspan(75, 100, color='#b6d7a8', alpha=0.5, label="Extreme Greed")
+ax.set_title("Historical Fear & Greed Index (2007–Today)")
+ax.set_ylabel("Index Value (0–100)")
+ax.set_ylim(0, 100)
+ax.legend()
+ax.xaxis.set_major_formatter(DateFormatter("%Y"))
 
-    tqdm.pandas()
-    df["FearGreed"] = df.progress_apply(compute_fg, axis=1)
-    df.dropna(subset=["FearGreed"], inplace=True)
-
-    latest_score = int(df["FearGreed"].iloc[-1])
-
-    # Gauge
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=latest_score,
-        title={'text': "Fear & Greed Index"},
-        gauge={
-            'axis': {'range': [0, 100]},
-            'bar': {'color': "black"},
-            'steps': [
-                {'range': [0, 25], 'color': '#ffcccc'},
-                {'range': [25, 50], 'color': '#fff2cc'},
-                {'range': [50, 75], 'color': '#d9f2d9'},
-                {'range': [75, 100], 'color': '#b6d7a8'},
-            ]
-        }
-    ))
-    st.plotly_chart(fig, use_container_width=True)
-
-    def label(score):
-        if score < 25: return "😱 Extreme Fear"
-        elif score < 50: return "😨 Fear"
-        elif score < 75: return "😐 Neutral"
-        else: return "😄 Greed"
-
-    st.subheader("📉 Market Sentiment Classification")
-    st.markdown(f"**Current market mood:** `{label(latest_score)}` — Score: **{latest_score}/100**")
-
-    # Add time series chart (Altair)
-    st.markdown("### 📈 Historical Fear & Greed Index (2007–Today)")
-    chart = alt.Chart(df.reset_index()).mark_line().encode(
-        x=alt.X('Date:T', title='Date'),
-        y=alt.Y('FearGreed:Q', title='Fear & Greed Index', scale=alt.Scale(domain=[0, 100]))
-    ).properties(width=900, height=350)
-
-    st.altair_chart(chart, use_container_width=True)
+plt.tight_layout()
+plt.grid(True)
+plt.show()
