@@ -444,85 +444,75 @@ with tab7:
     st.write("Action Distribution (Test Set):")
     st.write(action_counts_test)
 
-
 # ---------------------------- TAB 8 ----------------------------------
+# 🔷 Tab 8: Fear & Greed Index (Dynamic Version)
 with tab8:
+    import plotly.graph_objects as go
+
     st.markdown("""
-    🔷 **Fear & Greed Index (Dynamic Version)**
-    
+    ### 🔷 Fear & Greed Index (Dynamic Version)
     This indicator dynamically estimates current market sentiment based on AAII bullish/bearish sentiment and price momentum.
     """)
 
-    import plotly.graph_objects as go
-
-    # Compute a basic dynamic index (example: weighted average of normalized bullish sentiment and momentum)
     df_fg = clean_df.copy().set_index("Date")
-    df_fg = df_fg[['Bullish', 'Bearish', 'SP500_Close']].dropna()
-    df_fg['Momentum'] = df_fg['SP500_Close'].pct_change(4)
 
-    # Normalize inputs to [0, 100] scale
-    df_fg['Bullish_norm'] = 100 * (df_fg['Bullish'] - df_fg['Bullish'].min()) / (df_fg['Bullish'].max() - df_fg['Bullish'].min())
-    df_fg['Bearish_norm'] = 100 * (df_fg['Bearish'] - df_fg['Bearish'].min()) / (df_fg['Bearish'].max() - df_fg['Bearish'].min())
-    df_fg['Momentum_norm'] = 100 * (df_fg['Momentum'] - df_fg['Momentum'].min()) / (df_fg['Momentum'].max() - df_fg['Momentum'].min())
+    # Compute components
+    df_fg["Bullish_z"] = zscore(df_fg["Bullish"])
+    df_fg["Bearish_z"] = zscore(df_fg["Bearish"])
+    df_fg["Momentum"] = df_fg["SP500_Close"].pct_change(4)
+    df_fg["Momentum_z"] = zscore(df_fg["Momentum"])
 
-    # Compute simple sentiment score (weighted)
-    df_fg['FG_Index'] = (df_fg['Bullish_norm'] * 0.5 + (100 - df_fg['Bearish_norm']) * 0.3 + df_fg['Momentum_norm'] * 0.2)
+    # Combine
+    df_fg["FearGreed"] = (df_fg["Bullish_z"] - df_fg["Bearish_z"] + df_fg["Momentum_z"]) / 3
+    # Scale to 0-100
+    df_fg["FG_Score"] = 50 + 20 * df_fg["FearGreed"]
+    df_fg["FG_Score"] = df_fg["FG_Score"].clip(0, 100)
 
-    latest_value = int(df_fg['FG_Index'].iloc[-1])
+    # Latest value
+    current_score = int(df_fg["FG_Score"].iloc[-1])
 
+    # Gauge
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
-        value=latest_value,
-        title={'text': "Fear & Greed Index"},
+        value=current_score,
+        title={"text": "Fear & Greed Index"},
         gauge={
-            'axis': {'range': [0, 100]},
-            'bar': {'color': "black"},
-            'steps': [
-                {'range': [0, 20], 'color': "#fddede"},
-                {'range': [20, 40], 'color': "#fcefc5"},
-                {'range': [40, 60], 'color': "#e0f3dc"},
-                {'range': [60, 80], 'color': "#b7e4c7"},
-                {'range': [80, 100], 'color': "#74c69d"},
-            ],
+            "axis": {"range": [0, 100]},
+            "bar": {"color": "black"},
+            "steps": [
+                {"range": [0, 20], "color": "#fddede"},
+                {"range": [20, 40], "color": "#fbeac8"},
+                {"range": [40, 60], "color": "#e8f3e4"},
+                {"range": [60, 80], "color": "#d2f0d3"},
+                {"range": [80, 100], "color": "#b0ebbb"},
+            ]
         }
     ))
-
+    fig.update_layout(height=300, margin=dict(t=50, b=0, l=0, r=0))
     st.plotly_chart(fig, use_container_width=True)
 
+    # Historical Snapshots
     st.markdown("""
-    🧑‍🏫 **Historical Sentiment Snapshots**
+    ### 🧭 Historical Sentiment Snapshots
     """)
 
-    def sentiment_label(score):
-        if score < 20:
-            return "Extreme Fear"
-        elif score < 40:
-            return "Fear"
-        elif score < 60:
-            return "Neutral"
-        elif score < 80:
-            return "Greed"
-        else:
-            return "Extreme Greed"
+    def label(score):
+        if score < 20: return "Extreme Fear"
+        elif score < 40: return "Fear"
+        elif score < 60: return "Neutral"
+        elif score < 80: return "Greed"
+        else: return "Extreme Greed"
 
-    cols = st.columns(4)
-    periods = [1, 7, 30, 365]
-    labels = ["Previous Close", "1 Week Ago", "1 Month Ago", "1 Year Ago"]
+    latest = df_fg["FG_Score"].iloc[-1]
+    prev = df_fg["FG_Score"].iloc[-2]
+    w1 = df_fg["FG_Score"].iloc[-6] if len(df_fg) > 6 else prev
+    m1 = df_fg["FG_Score"].iloc[-24] if len(df_fg) > 24 else prev
+    y1 = df_fg["FG_Score"].iloc[-52] if len(df_fg) > 52 else prev
 
-    for i in range(4):
-        try:
-            score = int(df_fg['FG_Index'].iloc[-periods[i]])
-            change = latest_value - score
-            sentiment = sentiment_label(score)
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Previous Close", label(prev), delta=int(latest - prev))
+    col2.metric("1 Week Ago", label(w1), delta=int(latest - w1))
+    col3.metric("1 Month Ago", label(m1), delta=int(latest - m1))
+    col4.metric("1 Year Ago", label(y1), delta=int(latest - y1))
 
-            with cols[i]:
-                st.markdown(f"**{labels[i]}**")
-                st.write(sentiment)
-                arrow = "⬆️" if change > 0 else "⬇️"
-                st.write(f"{arrow} {abs(change)}")
-        except:
-            with cols[i]:
-                st.write(f"**{labels[i]}**\nN/A")
-
-    last_date = pd.to_datetime(df_fg.index[-1])
-    st.caption(f"Last updated {last_date.strftime('%B %d at %I:%M %p')} ET")
+    st.caption(f"Last updated {df_fg.index[-1].strftime('%B %d at %I:%M %p')} ET")
