@@ -533,33 +533,30 @@ with tab8:
 # ----------------- TAB 9 ------------------------
 # ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
 with tab9:
+    import yfinance as yf
+    from datetime import datetime, timedelta
+
     st.markdown("## 😱 Fear & Greed Index")
     st.markdown("""
     This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.  
-    \nThe final score ranges from 0 (extreme fear) to 100 (extreme greed). Each indicator contributes equally.
+    The final score ranges from 0 (extreme fear) to 100 (extreme greed). Each indicator contributes equally.
     """)
 
-    # ✅ Description of components
-    st.markdown("#### 📊 Index Components")
+    st.markdown("#### 🧮 How it's calculated:")
     st.markdown("""
-    The Fear & Greed Index is based on the average of seven indicators:
-    
-    - **Market Momentum**: S&P 500 current price vs. 125-day moving average  
-    - **Stock Price Strength**: % of time S&P 500 stays above 125-day MA  
-    - **Market Volatility**: VIX z-score (higher = fear)  
-    - **Stock Price Breadth**: HYG (junk bond ETF) vs. 30-day average  
-    - **Put & Call Options**: Proxied via VIX (same as Volatility)  
-    - **Junk Bond Demand**: HYG/TLT ratio  
-    - **Safe Haven Demand**: SPY/TLT ratio (inverse risk appetite)
-
-    Each component is rescaled to a [0–100] range and the final score is the arithmetic mean of the seven.
+    - **Market Momentum**: S&P 500 vs. 125-day moving average  
+    - **Stock Price Strength**: % above moving average  
+    - **Volatility**: Inverted VIX (fear proxy)  
+    - **Breadth**: HYG (risk appetite) vs 30-day MA  
+    - **Put/Call Proxy**: VIX score (duplicated)  
+    - **Junk Bond Demand**: HYG / TLT  
+    - **Safe Haven Demand**: SPY / TLT  
     """)
 
-    from datetime import datetime, timedelta
+    # Data download
     end = datetime.today()
-    start = end - timedelta(days=365)
+    start = datetime(1990, 1, 1)
 
-    # Download Yahoo Finance data
     try:
         sp500 = yf.download("^GSPC", start=start, end=end)["Close"]
         vix = yf.download("^VIX", start=start, end=end)["Close"]
@@ -579,37 +576,24 @@ with tab9:
     df.columns = ["SP500", "VIX", "HYG", "SPY", "TLT"]
     df.dropna(inplace=True)
 
-    # 1. Market Momentum: 125-day moving average vs current price
+    # Compute indicators over time
     ma_125 = df["SP500"].rolling(window=125).mean()
-    momentum_score = 100 * (df["SP500"].iloc[-1] - ma_125.iloc[-1]) / ma_125.iloc[-1]
-
-    # 2. Stock Price Strength: % above MA
-    strength_score = 100 * np.mean(df["SP500"] > ma_125)
-
-    # 3. Volatility: Inverted VIX (higher VIX = more fear)
-    vix_z = (df["VIX"] - df["VIX"].mean()) / df["VIX"].std()
-    vix_score = 100 - (vix_z.iloc[-1] * 20 + 50)
-
-    # 4. Stock Price Breadth: Advance-decline proxy using HYG
     hyg_ma = df["HYG"].rolling(window=30).mean()
-    breadth_score = 100 * (df["HYG"].iloc[-1] - hyg_ma.iloc[-1]) / hyg_ma.iloc[-1]
 
-    # 5. Put & Call Options: proxy using VIX/SPY
-    putcall_score = vix_score  # duplicate proxy
+    df["Momentum"] = 100 * (df["SP500"] - ma_125) / ma_125
+    df["Strength"] = 100 * (df["SP500"] > ma_125).astype(int)
+    df["VIX_Score"] = 100 - ((df["VIX"] - df["VIX"].mean()) / df["VIX"].std()) * 20 + 50
+    df["Breadth"] = 100 * (df["HYG"] - hyg_ma) / hyg_ma
+    df["PutCall"] = df["VIX_Score"]
+    df["Bond"] = 100 * (df["HYG"] / df["TLT"]) - 50
+    df["SafeHaven"] = 100 * (df["SPY"] / df["TLT"]) - 50
 
-    # 6. Junk Bond Demand: HYG vs TLT
-    bond_score = 100 * (df["HYG"].iloc[-1] / df["TLT"].iloc[-1]) - 50
+    indicators = ["Momentum", "Strength", "VIX_Score", "Breadth", "PutCall", "Bond", "SafeHaven"]
+    df["FG_Score"] = df[indicators].clip(0, 100).mean(axis=1)
 
-    # 7. Safe Haven Demand: SPY vs TLT (inverse)
-    safehaven_score = 100 * (df["SPY"].iloc[-1] / df["TLT"].iloc[-1]) - 50
+    final_score = int(df["FG_Score"].iloc[-1])
 
-    # Normalize and combine
-    components = [momentum_score, strength_score, vix_score,
-                  breadth_score, putcall_score, bond_score, safehaven_score]
-    normalized = [min(max(c, 0), 100) for c in components]
-    final_score = int(np.mean(normalized))
-
-    # Gauge Chart
+    # Gauge
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=final_score,
@@ -627,7 +611,7 @@ with tab9:
     ))
     st.plotly_chart(fig, use_container_width=True)
 
-    # Classification Label
+    # Text description
     def fg_label(score):
         if score < 25:
             return "😱 Extreme Fear"
