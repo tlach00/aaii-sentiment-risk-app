@@ -7,6 +7,11 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from scipy.stats import zscore
 import warnings
+import datetime
+import matplotlib.pyplot as plt
+from matplotlib.dates import DateFormatter
+from tqdm import tqdm
+
 warnings.filterwarnings("ignore")
 st.set_page_config(page_title="AAII Sentiment & S&P 500 Dashboard", layout="wide")
 # Sklearn: Preprocessing, Model, Metrics
@@ -532,18 +537,14 @@ with tab8:
 
 # ----------------- TAB 9 ------------------------
 # ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
+# ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
 with tab9:
-    import yfinance as yf
-    from datetime import datetime, timedelta
-
     st.markdown("## 😱 Fear & Greed Index")
     st.markdown("""
     This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.  
     The final score ranges from 0 (extreme fear) to 100 (extreme greed). Each indicator contributes equally.
-    """)
-
-    st.markdown("#### 🧮 How it's calculated:")
-    st.markdown("""
+    
+    ### 🧮 How it's calculated:
     - **Market Momentum**: S&P 500 vs. 125-day moving average  
     - **Stock Price Strength**: % above moving average  
     - **Volatility**: Inverted VIX (fear proxy)  
@@ -553,50 +554,52 @@ with tab9:
     - **Safe Haven Demand**: SPY / TLT  
     """)
 
-    # Data download
-    end = datetime.today()
-    start = datetime(1990, 1, 1)
+    import yfinance as yf
+    from tqdm import tqdm
+    import altair as alt
+
+    start_date = "2007-01-01"
+    end_date = pd.Timestamp.today().strftime("%Y-%m-%d")
+    tickers = ["^GSPC", "^VIX", "HYG", "SPY", "TLT"]
 
     try:
-        sp500 = yf.download("^GSPC", start=start, end=end)["Close"]
-        vix = yf.download("^VIX", start=start, end=end)["Close"]
-        hyg = yf.download("HYG", start=start, end=end)["Close"]
-        spy = yf.download("SPY", start=start, end=end)["Close"]
-        tlt = yf.download("TLT", start=start, end=end)["Close"]
+        df = yf.download(tickers, start=start_date, end=end_date)["Close"]
+        df.dropna(inplace=True)
     except Exception as e:
-        st.error("❌ Failed to fetch data from Yahoo Finance.")
+        st.error("❌ Failed to download data from Yahoo Finance.")
         st.exception(e)
         st.stop()
 
-    if any(x is None or x.empty for x in [sp500, vix, hyg, spy, tlt]):
-        st.error("One or more data series could not be downloaded properly.")
-        st.stop()
+    df["SP500_MA125"] = df["^GSPC"].rolling(window=125).mean()
+    df["HYG_MA30"] = df["HYG"].rolling(window=30).mean()
 
-    df = pd.concat([sp500, vix, hyg, spy, tlt], axis=1)
-    df.columns = ["SP500", "VIX", "HYG", "SPY", "TLT"]
-    df.dropna(inplace=True)
+    def compute_fg(row):
+        try:
+            momentum = 100 * (row["^GSPC"] - row["SP500_MA125"]) / row["SP500_MA125"]
+            recent = df.loc[:row.name].tail(125)
+            strength = 100 * np.mean(recent["^GSPC"] > recent["SP500_MA125"])
+            vix_z = (row["^VIX"] - df["^VIX"].mean()) / df["^VIX"].std()
+            volatility = 100 - (vix_z * 20 + 50)
+            breadth = 100 * (row["HYG"] - row["HYG_MA30"]) / row["HYG_MA30"]
+            put_call = volatility
+            junk_bond = 100 * (row["HYG"] / row["TLT"]) - 50
+            safe_haven = 100 * (row["SPY"] / row["TLT"]) - 50
+            scores = [momentum, strength, volatility, breadth, put_call, junk_bond, safe_haven]
+            normalized = [min(max(c, 0), 100) for c in scores]
+            return np.mean(normalized)
+        except:
+            return np.nan
 
-    # Compute indicators over time
-    ma_125 = df["SP500"].rolling(window=125).mean()
-    hyg_ma = df["HYG"].rolling(window=30).mean()
+    tqdm.pandas()
+    df["FearGreed"] = df.progress_apply(compute_fg, axis=1)
+    df.dropna(subset=["FearGreed"], inplace=True)
 
-    df["Momentum"] = 100 * (df["SP500"] - ma_125) / ma_125
-    df["Strength"] = 100 * (df["SP500"] > ma_125).astype(int)
-    df["VIX_Score"] = 100 - ((df["VIX"] - df["VIX"].mean()) / df["VIX"].std()) * 20 + 50
-    df["Breadth"] = 100 * (df["HYG"] - hyg_ma) / hyg_ma
-    df["PutCall"] = df["VIX_Score"]
-    df["Bond"] = 100 * (df["HYG"] / df["TLT"]) - 50
-    df["SafeHaven"] = 100 * (df["SPY"] / df["TLT"]) - 50
-
-    indicators = ["Momentum", "Strength", "VIX_Score", "Breadth", "PutCall", "Bond", "SafeHaven"]
-    df["FG_Score"] = df[indicators].clip(0, 100).mean(axis=1)
-
-    final_score = int(df["FG_Score"].iloc[-1])
+    latest_score = int(df["FearGreed"].iloc[-1])
 
     # Gauge
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
-        value=final_score,
+        value=latest_score,
         title={'text': "Fear & Greed Index"},
         gauge={
             'axis': {'range': [0, 100]},
@@ -606,21 +609,25 @@ with tab9:
                 {'range': [25, 50], 'color': '#fff2cc'},
                 {'range': [50, 75], 'color': '#d9f2d9'},
                 {'range': [75, 100], 'color': '#b6d7a8'},
-            ],
+            ]
         }
     ))
     st.plotly_chart(fig, use_container_width=True)
 
-    # Text description
-    def fg_label(score):
-        if score < 25:
-            return "😱 Extreme Fear"
-        elif score < 50:
-            return "😨 Fear"
-        elif score < 75:
-            return "😐 Neutral"
-        else:
-            return "😄 Greed"
+    def label(score):
+        if score < 25: return "😱 Extreme Fear"
+        elif score < 50: return "😨 Fear"
+        elif score < 75: return "😐 Neutral"
+        else: return "😄 Greed"
 
     st.subheader("📉 Market Sentiment Classification")
-    st.markdown(f"**Current market mood:** `{fg_label(final_score)}` — Score: **{final_score}/100**")
+    st.markdown(f"**Current market mood:** `{label(latest_score)}` — Score: **{latest_score}/100**")
+
+    # Add time series chart (Altair)
+    st.markdown("### 📈 Historical Fear & Greed Index (2007–Today)")
+    chart = alt.Chart(df.reset_index()).mark_line().encode(
+        x=alt.X('Date:T', title='Date'),
+        y=alt.Y('FearGreed:Q', title='Fear & Greed Index', scale=alt.Scale(domain=[0, 100]))
+    ).properties(width=900, height=350)
+
+    st.altair_chart(chart, use_container_width=True)
