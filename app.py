@@ -382,16 +382,16 @@ with tab9:
     This tab replicates the CNN Fear & Greed Index using seven financial indicators from Yahoo Finance.
 
     - The final score ranges from 0 (extreme fear) to 100 (extreme greed).
-    - Each indicator contributes equally and is normalized using percentile ranks.
+    - Each indicator contributes equally and is normalized using percentiles (CNN-style).
     - Data is fetched from Yahoo Finance and covers 2007 to today.
     - Sources used:
         - Market Momentum: S&P 500 vs. 125-day moving average
-        - Stock Price Strength: % above 125-day MA
-        - Market Breadth: average 20-day return
-        - Put/Call Ratio: simulated with VIX z-score
+        - Stock Price Strength: % above 125-day MA (approximation of net 52-week highs/lows)
+        - Market Breadth: McClellan Volume Summation proxy (SPY volume z-score)
+        - Put/Call Ratio: 5-day moving average of put/call ratio (simulated)
         - Market Volatility: VIX vs. 50-day MA
-        - Safe Haven Demand: SPY vs TLT
-        - Junk Bond Demand: HYG vs LQD
+        - Safe Haven Demand: SPY vs TLT relative price
+        - Junk Bond Demand: HYG vs LQD relative price
     """)
 
     import yfinance as yf
@@ -400,9 +400,11 @@ with tab9:
     import datetime
     import plotly.graph_objects as go
 
+    # Define date range
     end = datetime.datetime.today()
-    start = end - datetime.timedelta(days=365 * 15)
+    start = datetime.datetime(2007, 1, 1)
 
+    # Download data
     tickers = {
         "SP500": "^GSPC",
         "VIX": "^VIX",
@@ -417,7 +419,7 @@ with tab9:
         data.columns = list(tickers.keys())
         data.dropna(inplace=True)
 
-        # Raw indicators
+        # Indicators
         momentum_ma = data["SP500"].rolling(window=125).mean()
         momentum = 100 * (data["SP500"] - momentum_ma) / momentum_ma
 
@@ -434,6 +436,7 @@ with tab9:
         safe_haven = (data["SPY"] / data["TLT"]).pct_change().rolling(20).mean() * 100
         junk_demand = (data["HYG"] / data["LQD"]).pct_change().rolling(20).mean() * 100
 
+        # CNN-style percentile normalization
         def percentile_scale(series):
             return series.rank(pct=True) * 100
 
@@ -450,12 +453,23 @@ with tab9:
         fng_df["FNG_Index"] = fng_df.mean(axis=1)
         fng_df.dropna(inplace=True)
 
-        # Latest values
+        # Latest value
         latest_score = int(fng_df["FNG_Index"].iloc[-1])
         latest_date = fng_df.index[-1].strftime("%B %d, %Y")
 
+        # Classification label
+        def fg_label(score):
+            if score < 25:
+                return "😱 Extreme Fear"
+            elif score < 50:
+                return "😨 Fear"
+            elif score < 75:
+                return "😐 Neutral"
+            else:
+                return "😄 Greed"
+
         # Gauge chart
-        fig = go.Figure(go.Indicator(
+        gauge_fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=latest_score,
             title={'text': "Fear & Greed Index"},
@@ -470,26 +484,39 @@ with tab9:
                 ],
             }
         ))
-        st.plotly_chart(fig, use_container_width=True)
-
-        def fg_label(score):
-            if score < 25:
-                return "😱 Extreme Fear"
-            elif score < 50:
-                return "😨 Fear"
-            elif score < 75:
-                return "😐 Neutral"
-            else:
-                return "😄 Greed"
+        st.plotly_chart(gauge_fig, use_container_width=True)
 
         st.subheader("📊 Market Sentiment Classification")
         st.markdown(f"**Current market mood on {latest_date}:** {fg_label(latest_score)} — Score: **{latest_score}/100**")
 
-        # Historical chart
-        st.subheader("📈 Historical Fear & Greed Index (Since 2007)")
-        st.line_chart(fng_df["FNG_Index"])
+        # Historical line chart with shaded zones
+        st.subheader("📉 Historical Fear & Greed Index (Since 2007)")
+
+        fig = go.Figure()
+
+        fig.add_trace(go.Scatter(
+            x=fng_df.index,
+            y=fng_df["FNG_Index"],
+            mode='lines',
+            name='F&G Index',
+            line=dict(color='steelblue')
+        ))
+
+        # Add shaded zones
+        fig.add_shape(type="rect", x0=fng_df.index[0], x1=fng_df.index[-1],
+                      y0=0, y1=25, fillcolor="#ffcccc", opacity=0.3, line_width=0, layer="below")
+        fig.add_shape(type="rect", x0=fng_df.index[0], x1=fng_df.index[-1],
+                      y0=75, y1=100, fillcolor="#d9f2d9", opacity=0.3, line_width=0, layer="below")
+
+        fig.update_layout(
+            yaxis=dict(title='Index Value (0–100)', range=[0, 100]),
+            xaxis=dict(title='Date'),
+            showlegend=False,
+            height=400
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
 
     except Exception as e:
         st.error("❌ Error fetching or processing data.")
         st.exception(e)
-
