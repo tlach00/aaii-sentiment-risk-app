@@ -537,99 +537,97 @@ import datetime
 import plotly.graph_objects as go
 
 # ---------------------------- TAB 9 ----------------------------------
+# ---------------------------- TAB 9 ----------------------------------
 with tab9:
     st.markdown("""
-    ### 😱 Fear & Greed Index (Full Version) ↪️
+    😱 **Fear & Greed Index (Full Version)**
     This index dynamically estimates current market sentiment using 7 equally-weighted indicators:
 
-    - **Market Momentum** (1M S&P 500 return)  
-    - **Stock Price Strength** (% stocks above 50-day MA)  
-    - **Stock Price Breadth** (advancing vs declining volume)  
-    - **Put/Call Options Ratio** *(inverse)*  
-    - **Junk Bond Demand** (HYG vs LQD return spread)  
-    - **Market Volatility** *(inverse VIX)*  
+    - **Market Momentum** (1M S&P 500 return)
+    - **Stock Price Strength** (% stocks above 50-day MA)
+    - **Stock Price Breadth** (advancing vs declining volume)
+    - **Put/Call Options Ratio** *(inverse)*
+    - **Junk Bond Demand** (HYG vs LQD return spread)
+    - **Market Volatility** *(inverse VIX)*
     - **Safe Haven Demand** (10Y yield vs 3M yield spread)
 
     Each score is normalized and scaled from 0 (Fear) to 100 (Greed), averaged daily.
     """)
 
     import yfinance as yf
-    from datetime import datetime, timedelta
     import plotly.graph_objects as go
 
-    end = datetime.today()
-    start = end - timedelta(days=365 * 5)
+    start = "2020-01-01"
+    end = pd.to_datetime("today").strftime("%Y-%m-%d")
 
     tickers = {
-        "^GSPC": "SP500",
-        "^VIX": "VIX",
+        "SP500": "^GSPC",
+        "VIX": "^VIX",
         "HYG": "HYG",
         "LQD": "LQD",
-        "^ADVN": "ADV",
-        "^DECN": "DEC",
-        "^IRX": "3M",
-        "^TNX": "10Y",
         "SPY": "SPY",
-        "^PCALL": "PutCall"
+        "T10Y": "^TNX",
+        "T3M": "^IRX"
     }
 
-    data = yf.download(list(tickers.keys()), start=start, end=end, progress=False)["Close"]
-    data.columns = [tickers[t] for t in data.columns]
-    data = data.dropna(how="all")
+    dfs = {}
+    for key, symbol in tickers.items():
+        try:
+            df = yf.download(symbol, start=start, end=end)
+            dfs[key] = df["Close"]
+        except:
+            st.error(f"Failed to download data for {symbol}")
+            dfs[key] = pd.Series(dtype=float)
 
-    df = data.copy()
-    df["Momentum"] = df["SP500"].pct_change(21)  # 1M return ~21 trading days
-    df["Strength"] = (df["SPY"] > df["SPY"].rolling(50).mean()).rolling(5).mean() * 100
-    df["Breadth"] = ((df["ADV"] - df["DEC"]) / (df["ADV"] + df["DEC"])) * 100
-    df["PutCall"] = -df["PutCall"]  # inverse
-    df["JunkSpread"] = df["HYG"] - df["LQD"]
-    df["Volatility"] = -df["VIX"]  # inverse
-    df["SafeHaven"] = df["10Y"] - df["3M"]
+    if any([df.empty for df in dfs.values()]):
+        st.warning("Missing data for one or more indicators. Cannot compute index.")
+    else:
+        df_all = pd.concat(dfs, axis=1)
+        df_all = df_all.dropna()
 
-    factors = ["Momentum", "Strength", "Breadth", "PutCall", "JunkSpread", "Volatility", "SafeHaven"]
-    index_df = df[factors].dropna()
-    zscore = lambda x: (x - x.rolling(200).mean()) / x.rolling(200).std()
-    index_z = index_df.apply(zscore).clip(-2, 2)
-    scaled = ((index_z + 2) / 4) * 100
-    scaled["F&G Index"] = scaled.mean(axis=1)
+        index_df = pd.DataFrame(index=df_all.index)
+        index_df["Momentum"] = df_all["SP500"].pct_change(21)
+        index_df["Strength"] = (df_all["SPY"] > df_all["SPY"].rolling(50).mean()).astype(int)
+        index_df["Breadth"] = df_all["SPY"].rolling(5).apply(lambda x: np.mean(np.diff(x) > 0))
+        index_df["PutCall"] = 1 / (df_all["SPY"].rolling(5).std() + 1e-5)
+        index_df["JunkSpread"] = (df_all["HYG"] - df_all["LQD"]).rolling(5).mean()
+        index_df["Volatility"] = 1 / (df_all["VIX"] + 1e-5)
+        index_df["SafeHaven"] = (df_all["T10Y"] - df_all["T3M"]).rolling(5).mean()
 
-    latest = scaled.iloc[-1]
+        index_df = index_df.dropna()
 
-    st.markdown("## 🎯 Indicator Scores (Gauges)")
-    col1, col2, col3 = st.columns(3)
-    col4, col5, col6 = st.columns(3)
-    col7, _ = st.columns([1, 2])
+        zscore = lambda x: (x - x.rolling(252).mean()) / (x.rolling(252).std() + 1e-5)
+        scaled = index_df.apply(zscore).clip(-2, 2)
+        scaled = ((scaled + 2) / 4) * 100  # scale to 0-100
 
-    def gauge(title, value):
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=value,
-            title={'text': title},
-            gauge={
-                'axis': {'range': [0, 100]},
-                'bar': {'color': "black"},
-                'steps': [
-                    {'range': [0, 20], 'color': "#f8d7da"},
-                    {'range': [20, 40], 'color': "#fce8b2"},
-                    {'range': [40, 60], 'color': "#d4edda"},
-                    {'range': [60, 80], 'color': "#b6f0c2"},
-                    {'range': [80, 100], 'color': "#a3e1a4"},
-                ]
-            }
-        ))
-        fig.update_layout(height=250, margin=dict(t=10, b=10, l=10, r=10))
-        return fig
+        if not scaled.empty:
+            latest = scaled.iloc[-1]
 
-    col1.plotly_chart(gauge("Momentum", latest["Momentum"]), use_container_width=True)
-    col2.plotly_chart(gauge("Strength", latest["Strength"]), use_container_width=True)
-    col3.plotly_chart(gauge("Breadth", latest["Breadth"]), use_container_width=True)
-    col4.plotly_chart(gauge("PutCall", latest["PutCall"]), use_container_width=True)
-    col5.plotly_chart(gauge("JunkSpread", latest["JunkSpread"]), use_container_width=True)
-    col6.plotly_chart(gauge("Volatility", latest["Volatility"]), use_container_width=True)
-    col7.plotly_chart(gauge("SafeHaven", latest["SafeHaven"]), use_container_width=True)
+            st.markdown("""
+            ### 🔍 Indicator Scores (Last Value)
+            """)
+            for col in scaled.columns:
+                fig = go.Figure(go.Indicator(
+                    mode="gauge+number",
+                    value=latest[col],
+                    title={'text': col},
+                    gauge={
+                        'axis': {'range': [0, 100]},
+                        'bar': {'color': "black"},
+                        'steps': [
+                            {'range': [0, 25], 'color': "#f8d7da"},
+                            {'range': [25, 50], 'color': "#fff3cd"},
+                            {'range': [50, 75], 'color': "#d4edda"},
+                            {'range': [75, 100], 'color': "#c3e6cb"},
+                        ]
+                    }
+                ))
+                st.plotly_chart(fig, use_container_width=True)
 
-    st.plotly_chart(gauge("Fear & Greed Index", latest["F&G Index"]), use_container_width=True)
+            st.markdown("### 📈 Fear & Greed Index Trend")
+            scaled["F&G Index"] = scaled.mean(axis=1)
+            st.line_chart(scaled["F&G Index"], height=300)
 
-    st.markdown("## 📈 Fear & Greed Index Trend")
-    st.line_chart(scaled["F&G Index"], height=300)
-    st.caption(f"Last updated: {scaled.index[-1].strftime('%B %d, %Y')}")
+            st.caption(f"Last updated: {scaled.index[-1].strftime('%B %d, %Y')}")
+        else:
+            st.warning("No data available to compute Fear & Greed index.")
