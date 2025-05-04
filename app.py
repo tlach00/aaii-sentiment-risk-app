@@ -531,7 +531,6 @@ with tab8:
 
 
 # ----------------- TAB 9 ------------------------
-
 # ------------------------- TAB 9: CNN Fear & Greed Replication -------------------------
 with tab9:
     st.markdown("## 😱 Fear & Greed Index")
@@ -540,7 +539,22 @@ with tab9:
     \nThe final score ranges from 0 (extreme fear) to 100 (extreme greed). Each indicator contributes equally.
     """)
 
-    # ✅ FIXED: Proper datetime import
+    # ✅ Description of components
+    st.markdown("#### 📊 Index Components")
+    st.markdown("""
+    The Fear & Greed Index is based on the average of seven indicators:
+    
+    - **Market Momentum**: S&P 500 current price vs. 125-day moving average  
+    - **Stock Price Strength**: % of time S&P 500 stays above 125-day MA  
+    - **Market Volatility**: VIX z-score (higher = fear)  
+    - **Stock Price Breadth**: HYG (junk bond ETF) vs. 30-day average  
+    - **Put & Call Options**: Proxied via VIX (same as Volatility)  
+    - **Junk Bond Demand**: HYG/TLT ratio  
+    - **Safe Haven Demand**: SPY/TLT ratio (inverse risk appetite)
+
+    Each component is rescaled to a [0–100] range and the final score is the arithmetic mean of the seven.
+    """)
+
     from datetime import datetime, timedelta
     end = datetime.today()
     start = end - timedelta(days=365)
