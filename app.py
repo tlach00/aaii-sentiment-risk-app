@@ -572,7 +572,7 @@ with tab10:
                     domain={'x': [0, 1], 'y': [0, 1]}
                 ))
                 fig.update_layout(width=220, height=200, margin=dict(t=20, b=20, l=20, r=20))
-                st.plotly_chart(fig)
+                st.plotly_chart(fig, use_container_width=True, key=f"gauge_{ticker}")
                 st.markdown(f"<div style='text-align: center; color:{fng_color(score)}'><b>{ticker}</b></div>", unsafe_allow_html=True)
             else:
                 st.warning(f"⚠️ Error processing {ticker}")
