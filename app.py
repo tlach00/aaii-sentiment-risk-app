@@ -484,17 +484,20 @@ with tab10:
     st.markdown("## 🧬 Stock-Specific Fear & Greed Index Dashboard")
 
     # Explanation at the top
-    st.markdown("""
-    This Fear & Greed index is calculated using stock-specific indicators:
-    
-    - **Volatility**: 20d vs 50d historical volatility of the stock
-    - **Safe Haven Demand**: Ratio of SPY to TLT (proxy for risk appetite)
-    - **Junk Bond Demand**: Ratio of HYG to LQD (corporate credit risk appetite)
-    - **Momentum**: Stock vs 125-day moving average
-    - **Breadth**: 20-day return of the stock (proxy for directional strength)
-    
-    These signals are standardized (z-score), averaged, then scaled between 0–100 to represent fear (0) to greed (100).
-    """)
+    st.markdown("## 🧬 Stock-Specific Fear & Greed Index Dashboard")
+
+    with st.expander("ℹ️ How is this index calculated?", expanded=True):
+        st.markdown("""
+        The **Stock-Specific Fear & Greed Index** combines 6 key components:
+        - **Volatility**: Based on the stock’s 20-day and 50-day historical volatility.
+        - **Safe Haven Demand**: Comparing SPY (market risk) to TLT (10Y bonds).
+        - **Junk Bond Demand**: Using HYG vs LQD yield spread as a market proxy.
+        - **Sentiment**: Approximated from stock’s options skew (put/call interest).
+        - **Momentum**: Stock’s price vs 125-day moving average.
+        - **Breadth**: Stock’s 20-day return or RSI score.
+
+        These features are standardized (z-score), averaged, scaled from **0 to 100**, and then mapped to a color-coded gauge.
+        """)
 
     # Top 10 most capitalized S&P 500 stocks
     top_stocks = ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "TSLA", "META", "JPM", "BRK-B", "UNH"]
