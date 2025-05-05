@@ -479,12 +479,12 @@ with tab10:
     import numpy as np
     import plotly.graph_objects as go
     import plotly.express as px
-    from datetime import datetime
+    import datetime
     import streamlit as st
 
     st.markdown("## 🧬 Stock-Specific Fear & Greed Index Dashboard")
 
-    with st.expander("❓ How is this index calculated?", expanded=True):
+    with st.expander("❓ How is this index calculated?"):
         st.markdown("""
         The **Stock-Specific Fear & Greed Index** combines 6 key components:
 
@@ -498,115 +498,89 @@ with tab10:
         Each feature is standardized (z-score), averaged, and scaled from 0 to 100.
         """)
 
-    def compute_fng_score(ticker):
-        try:
-            data = yf.download([ticker, "SPY", "TLT", "HYG", "LQD"], start="2022-01-01", end=datetime.today(), progress=False)["Close"]
-            data.columns = data.columns.get_level_values(0)
-            data.dropna(inplace=True)
-
-            stock = data[ticker]
-
-            volatility_20 = stock.pct_change().rolling(20).std()
-            volatility_50 = stock.pct_change().rolling(50).std()
-            volatility = 100 * (volatility_20 / volatility_50)
-
-            safe_haven = (data["SPY"] / data["TLT"]).pct_change().rolling(20).mean()
-            junk_demand = (data["HYG"] / data["LQD"]).pct_change().rolling(20).mean()
-
-            call = yf.Ticker(ticker).option_chain().calls['openInterest'].sum()
-            put = yf.Ticker(ticker).option_chain().puts['openInterest'].sum()
-            sentiment = 100 * (put / (put + call)) if (put + call) != 0 else np.nan
-            sentiment = pd.Series(sentiment, index=data.index[-1:])
-
-            momentum = 100 * (stock - stock.rolling(125).mean()) / stock.rolling(125).mean()
-            breadth = stock.pct_change(20)
-
-            df = pd.DataFrame({
-                "volatility": volatility,
-                "safehaven": safe_haven,
-                "junk": junk_demand,
-                "sentiment": sentiment,
-                "momentum": momentum,
-                "breadth": breadth
-            }).dropna()
-
-            z = (df - df.mean()) / df.std()
-            scaled = np.clip(50 + z.mean(axis=1) * 25, 0, 100)
-            return scaled
-        except:
-            return None
-
     st.markdown("### 🏆 Fear & Greed Today — Top S&P 500 Companies")
 
-    top_stocks = ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "META", "TSLA", "UNH"]
+    def compute_fg_score(ticker):
+        try:
+            end = datetime.datetime.today()
+            start = end - datetime.timedelta(days=365)
+            stock = yf.download(ticker, start=start, end=end)["Close"]
+            market = yf.download(["SPY", "TLT", "HYG", "LQD"], start=start, end=end)["Close"]
+            
+            df = pd.DataFrame(index=stock.index)
+            df["price"] = stock
+            df["ret"] = stock.pct_change()
+            df["vol_20"] = stock.pct_change().rolling(20).std()
+            df["vol_50"] = stock.pct_change().rolling(50).std()
+            df["vol"] = df[["vol_20", "vol_50"]].mean(axis=1)
+            df["momentum"] = 100 * (stock - stock.rolling(125).mean()) / stock.rolling(125).mean()
+            df["breadth"] = stock.pct_change(20)
+            df["safehaven"] = (market["SPY"] / market["TLT"]).pct_change().rolling(20).mean()
+            df["junk"] = (market["HYG"] / market["LQD"]).pct_change().rolling(20).mean()
+            df.dropna(inplace=True)
+
+            z = (df[["vol", "momentum", "breadth", "safehaven", "junk"]] - df[["vol", "momentum", "breadth", "safehaven", "junk"]].mean()) / df[["vol", "momentum", "breadth", "safehaven", "junk"]].std()
+            fng_scaled = 50 + z.mean(axis=1) * 10
+            return fng_scaled.clip(0, 100)
+        except Exception as e:
+            return None
+
+    def plot_fng_gauge(ticker, score, key):
+        color = "#d9f2d9" if score > 75 else "#e6f2cc" if score > 50 else "#fff2cc" if score > 25 else "#ffcccc"
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=score,
+            gauge={
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "black"},
+                'steps': [
+                    {'range': [0, 25], 'color': '#ffcccc'},
+                    {'range': [25, 50], 'color': '#fff2cc'},
+                    {'range': [50, 75], 'color': '#d9f2d9'},
+                    {'range': [75, 100], 'color': '#b6d7a8'},
+                ]
+            }
+        ))
+        fig.update_layout(width=260, height=200, margin=dict(t=30, b=0, l=0, r=0))
+        st.plotly_chart(fig, use_container_width=False, key=key)
+        st.markdown(f"<div style='text-align:center; color:{color}; font-weight:bold;'>{ticker}</div>", unsafe_allow_html=True)
+
+    top_tickers = ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "META", "TSLA", "UNH"]
     cols = st.columns(4)
-    errors = []
-    gauges = []
-
-    for i, ticker in enumerate(top_stocks):
-        fng = compute_fng_score(ticker)
-        if fng is not None and not fng.empty:
-            score = round(fng[-1], 1)
-            color = "#ffcccc" if score < 25 else "#fff2cc" if score < 50 else "#d9f2d9" if score < 75 else "#b6d7a8"
-
-            fig = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=score,
-                gauge={
-                    'axis': {'range': [0, 100]},
-                    'bar': {'color': "black"},
-                    'steps': [
-                        {'range': [0, 25], 'color': '#ffcccc'},
-                        {'range': [25, 50], 'color': '#fff2cc'},
-                        {'range': [50, 75], 'color': '#d9f2d9'},
-                        {'range': [75, 100], 'color': '#b6d7a8'}
-                    ]
-                },
-                number={'valueformat': ".1f"},
-            ))
-            fig.update_layout(margin=dict(t=10, b=10, l=10, r=10), height=250)
+    for i, ticker in enumerate(top_tickers):
+        fng_today = compute_fg_score(ticker)
+        if fng_today is not None and not fng_today.empty:
+            score = round(fng_today[-1], 1)
             with cols[i % 4]:
-                st.plotly_chart(fig, use_container_width=True)
-                st.markdown(f"<div style='text-align:center; color:{color}; font-weight:bold'>{ticker}</div>", unsafe_allow_html=True)
+                plot_fng_gauge(ticker, score, key=f"gauge_{ticker}")
         else:
-            errors.append(ticker)
-
-    for err in errors:
-        st.warning(f"⚠️ Error processing {err}")
+            with cols[i % 4]:
+                st.warning(f"⚠️ Error processing {ticker}")
 
     st.markdown("---")
     st.markdown("### 🔍 Explore Any S&P 500 Stock")
 
-    try:
-        with open("tickers_sp500.txt") as f:
-            all_tickers = sorted([line.strip() for line in f])
-    except:
-        st.error("❌ Could not read tickers_sp500.txt")
-        all_tickers = []
+    with open("tickers_sp500.txt") as f:
+        all_tickers = f.read().splitlines()
 
-    selected_stock = st.selectbox("Select a stock:", all_tickers)
-    start_date = st.date_input("Start Date", value=pd.to_datetime("2023-01-01"))
-    end_date = st.date_input("End Date", value=pd.to_datetime("today"))
+    selected = st.selectbox("Select a stock:", options=all_tickers)
+    date_range = st.date_input("Select date range:", value=(datetime.date(2023, 1, 1), datetime.date.today()))
 
-    if selected_stock and start_date < end_date:
-        fng_series = compute_fng_score(selected_stock)
-        if fng_series is not None and not fng_series.empty:
-            filtered_fng = fng_series.loc[str(start_date):str(end_date)]
-            st.markdown("#### 📊 Fear & Greed Index History")
-            fig_fng = px.line(filtered_fng, labels={"value": "F&G Score"}, title=f"{selected_stock} - Fear & Greed Index")
-            st.plotly_chart(fig_fng, use_container_width=True)
+    if selected:
+        fng_full = compute_fg_score(selected)
+        if fng_full is not None and not fng_full.empty:
+            fng_range = fng_full.loc[str(date_range[0]):str(date_range[1])]
+            st.metric(f"Today's {selected} Fear & Greed Score", f"{round(fng_range[-1],1)}")
 
-            st.markdown("### 📉 Stock Price History")
-            try:
-                price_data = yf.download(selected_stock, start=start_date, end=end_date, interval="1d")
-                if not price_data.empty:
-                    fig_price = px.line(price_data.reset_index(), x="Date", y="Close", title=f"{selected_stock} Historical Price")
-                    st.plotly_chart(fig_price, use_container_width=True)
-                else:
-                    st.warning("⚠️ No price data available for the selected date range.")
-            except Exception as e:
-                st.error(f"Error loading price data: {e}")
+            st.markdown("#### Historical Fear & Greed Index")
+            fig_fg = px.line(fng_range, title="F&G Index", labels={"value": "F&G Score", "index": "Date"})
+            fig_fg.update_layout(height=300)
+            st.plotly_chart(fig_fg, use_container_width=True, key="line_fg")
+
+            st.markdown("#### Stock Price History")
+            price_data = yf.download(selected, start=date_range[0], end=date_range[1])["Close"]
+            fig_price = px.line(price_data, title="Price", labels={"value": "Price", "index": "Date"})
+            fig_price.update_layout(height=300)
+            st.plotly_chart(fig_price, use_container_width=True, key="line_price")
         else:
-            st.warning("Could not compute index for this stock. Try another.")
-    elif start_date >= end_date:
-        st.warning("⚠️ Please select a valid date range.")
+            st.warning("Could not retrieve or compute data for this ticker.")
