@@ -473,8 +473,7 @@ with tab9:
         st.exception(e)
 
 
-# ------------------------- TAB 10: Fear & Greed Dashboard for Top Stocks -------------------------
-# -------------------- TAB 10: Stock-Specific Fear & Greed Dashboard --------------------
+# ------------------------- TAB 10: Stock-Specific F&G Mini Dashboard -------------------------
 with tab10:
     import yfinance as yf
     import pandas as pd
@@ -482,80 +481,118 @@ with tab10:
     import plotly.graph_objects as go
     import datetime
 
-    st.markdown("## 📊 Real-Time Fear & Greed Dashboard for Top S&P 500 Stocks")
+    st.markdown("## 💡 Real-Time Fear & Greed Dashboard for Top S&P 500 Stocks")
 
-    st.markdown("""
-    The index is calculated using **stock-specific metrics**:
-    
-    - **Volatility**: 20d and 50d std deviation of log returns
-    - **Momentum**: Price vs 125-day MA
-    - **Breadth**: 20-day return
-    - **Safe Haven Demand**: Relative return vs SPY (20d)
+    top_stocks = ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA", "META", "GOOGL", "JPM", "BRK-B", "UNH"]
 
-    All components are standardized (z-score), averaged, scaled to a 0–100 index, and displayed as a gauge.
-    """)
-
-    tickers = ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA", "META", "GOOGL", "JPM", "BRK-B", "UNH"]
-
-    start = datetime.datetime.today() - datetime.timedelta(days=365*2)
-    end = datetime.datetime.today()
-
-    stock_data = yf.download(tickers + ["SPY"], start=start, end=end)["Close"]
-    stock_data = stock_data.dropna(how="all")
-
-    def calculate_fg_score(price_series, spy_series):
-        log_returns = np.log(price_series).diff()
-
-        vol_20d = log_returns.rolling(20).std()
-        vol_50d = log_returns.rolling(50).std()
-        volatility = (vol_20d + vol_50d) / 2
-
-        ma_125 = price_series.rolling(125).mean()
-        momentum = 100 * (price_series - ma_125) / ma_125
-
-        breadth = 100 * price_series.pct_change(20)
-
-        rel_performance = (price_series.pct_change(20)) - (spy_series.pct_change(20))
-
-        df = pd.DataFrame({
-            "volatility": volatility,
-            "momentum": momentum,
-            "breadth": breadth,
-            "safehaven": rel_performance,
-        })
-        df = df.dropna()
-
-        z = (df - df.mean()) / df.std()
-        index = np.clip(50 + z.mean(axis=1) * 25, 0, 100)
-
-        return index[-1] if not index.empty else None
-
-    cols = st.columns(5)
-    for i, ticker in enumerate(tickers):
+    def calculate_fng_score(ticker):
         try:
-            price_series = stock_data[ticker].dropna()
-            spy_series = stock_data["SPY"].dropna()
-            aligned = pd.concat([price_series, spy_series], axis=1).dropna()
-            score = calculate_fg_score(aligned[ticker], aligned["SPY"])
+            end = datetime.datetime.today()
+            start = end - datetime.timedelta(days=365)
+            df = yf.download(ticker, start=start, end=end)["Close"].dropna()
+            if len(df) < 200:
+                return None
 
-            with cols[i % 5]:
-                fig = go.Figure(go.Indicator(
-                    mode="gauge+number",
-                    value=score,
-                    title={"text": ticker},
-                    gauge={
-                        'axis': {'range': [0, 100]},
-                        'bar': {'color': "black"},
-                        'steps': [
-                            {'range': [0, 25], 'color': '#ffcccc'},
-                            {'range': [25, 50], 'color': '#fff2cc'},
-                            {'range': [50, 75], 'color': '#d9f2d9'},
-                            {'range': [75, 100], 'color': '#b6d7a8'},
-                        ]
-                    }
-                ))
-                fig.update_layout(width=240, height=240, margin=dict(t=20, b=20, l=0, r=0))
-                st.plotly_chart(fig)
+            returns = np.log(df / df.shift(1))
+            vol_20 = returns.rolling(20).std()
+            vol_50 = returns.rolling(50).std()
+            volatility = vol_20 + vol_50
 
-        except Exception as e:
-            st.warning(f"⚠️ Error processing {ticker}: {e}")
+            ma_125 = df.rolling(125).mean()
+            momentum = 100 * (df - ma_125) / ma_125
+
+            breadth = 100 * df.pct_change(20)
+
+            spy = yf.download("SPY", start=start, end=end)["Close"].dropna()
+            common = df.index.intersection(spy.index)
+            rel_return = (df.pct_change(20).loc[common] - spy.pct_change(20).loc[common]) * 100
+            safe_haven = rel_return
+
+            fng_df = pd.DataFrame({
+                "volatility": volatility,
+                "momentum": momentum,
+                "breadth": breadth,
+                "safehaven": safe_haven
+            }).dropna()
+
+            z = (fng_df - fng_df.mean()) / fng_df.std()
+            fng_scaled = 50 + z.mean(axis=1) * 20
+            fng_scaled = np.clip(fng_scaled, 0, 100)
+
+            return round(fng_scaled[-1], 1), fng_scaled
+
+        except:
+            return None, None
+
+    col1, col2, col3 = st.columns(3)
+    cols = [col1, col2, col3]
+    for i, ticker in enumerate(top_stocks):
+        score, _ = calculate_fng_score(ticker)
+        if score is not None:
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=score,
+                title={'text': ticker},
+                number={'font': {'size': 28, 'color':
+                    "#d62728" if score < 25 else
+                    "#ff7f0e" if score < 50 else
+                    "#2ca02c" if score < 75 else
+                    "#1f77b4"}},
+                gauge={
+                    'axis': {'range': [0, 100]},
+                    'bar': {'color': "black"},
+                    'steps': [
+                        {'range': [0, 25], 'color': '#ffcccc'},
+                        {'range': [25, 50], 'color': '#fff2cc'},
+                        {'range': [50, 75], 'color': '#d9f2d9'},
+                        {'range': [75, 100], 'color': '#b6d7a8'}
+                    ]
+                }
+            ))
+            fig.update_layout(height=250, margin=dict(t=20, b=10, l=10, r=10))
+            cols[i % 3].plotly_chart(fig, use_container_width=True)
+        else:
+            cols[i % 3].warning(f"⚠️ Error processing {ticker}")
+
+    st.markdown("---")
+    st.markdown("### 🔎 Explore Any S&P 500 Stock")
+
+    with open("tickers_sp500.txt") as f:
+        all_sp500 = [line.strip() for line in f.readlines() if line.strip()]
+
+    selected = st.selectbox("Select a stock:", options=all_sp500, index=0)
+    date_range = st.date_input("Select date range:", [datetime.date(2023, 1, 1), datetime.date.today()])
+
+    score, history = calculate_fng_score(selected)
+
+    if score is not None:
+        st.metric(label=f"Today's Fear & Greed Score for {selected}", value=f"{score}/100")
+
+        filtered = history.loc[date_range[0]:date_range[1]]
+        price = yf.download(selected, start=filtered.index.min(), end=filtered.index.max())["Close"].dropna()
+
+        st.plotly_chart(
+            go.Figure([
+                go.Scatter(x=filtered.index, y=filtered, name="Fear & Greed Index"),
+                go.Scatter(x=price.index, y=price, name="Stock Price", yaxis="y2")
+            ]).update_layout(
+                yaxis=dict(title="F&G Index", range=[0, 100]),
+                yaxis2=dict(title="Price", overlaying="y", side="right"),
+                title=f"Historical View for {selected}",
+                height=500
+            ),
+            use_container_width=True
+        )
+
+        st.markdown("### 📘 Explanation")
+        st.markdown("""
+        The Fear & Greed index is built using four components:
+        - **Volatility**: Stock's 20d and 50d standard deviation of log returns.
+        - **Momentum**: Price relative to 125-day moving average.
+        - **Breadth**: 20-day percent return.
+        - **Safe Haven Demand**: Return spread vs SPY (market baseline).
+
+        These values are standardized (z-score), averaged, and scaled between 0–100.
+        """)
+    else:
+        st.warning("Could not compute index for this stock. Try another.")
