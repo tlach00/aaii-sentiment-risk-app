@@ -34,13 +34,14 @@ def load_clean_data():
     return df.dropna()
 raw_df = load_raw_excel()
 clean_df = load_clean_data()
-tab1, tab2, tab3, tab7, tab8, tab9 = st.tabs([
+tab1, tab2, tab3, tab7, tab8, tab9, tab10 = st.tabs([
     "📁 Raw Excel Viewer",
     "📈 Interactive Dashboard",
     "🧪 Z-Score Strategy Backtest",
     "🧠 Deep Q-Learning Strategy",
     "📉 Fear & Greed Index",
-    "😱 CNN F&G replication"
+    "😱 CNN F&G replication", 
+    "👻 F&G mini-gauge dashboard"
 ])
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
@@ -470,3 +471,85 @@ with tab9:
     except Exception as e:
         st.error("❌ Error fetching or processing data.")
         st.exception(e)
+
+
+# ------------------------- NEW TAB: Fear & Greed Mini-Gauges Dashboard -------------------------
+with tab10:
+    import yfinance as yf
+    import pandas as pd
+    import numpy as np
+    import datetime
+    import plotly.graph_objects as go
+    import streamlit as st
+
+    st.markdown("## 💹 Real-Time Fear & Greed Dashboard for Top S&P 500 Stocks")
+
+    # 1. List of target stocks (10 most popular/traded S&P 500 stocks)
+    tickers = ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA", "META", "GOOGL", "JPM", "BRK-B", "UNH"]
+    safe_haven = "TLT"  # fixed for all stocks
+
+    end = datetime.datetime.today()
+    start = end - datetime.timedelta(days=365)
+
+    # 2. Download data
+    data = yf.download(tickers + [safe_haven], start=start, end=end)["Close"].dropna()
+
+    gauges = []
+
+    for ticker in tickers:
+        try:
+            price = data[ticker]
+            tlt = data[safe_haven]
+
+            ma125 = price.rolling(window=125).mean()
+            momentum = 100 * (price - ma125) / ma125
+            strength = 100 * (price > ma125).rolling(window=50).mean()
+            returns = price.pct_change()
+            breadth = 100 * returns.rolling(20).mean()
+            volatility = 100 - price.pct_change().rolling(10).std() * 100
+            safe_haven_demand = (price / tlt).pct_change().rolling(20).mean() * 100
+
+            df = pd.DataFrame({
+                "momentum": momentum,
+                "strength": strength,
+                "breadth": breadth,
+                "volatility": volatility,
+                "safehaven": safe_haven_demand
+            }).dropna()
+
+            z_scores = (df - df.mean()) / df.std()
+            score = np.clip(50 + z_scores.mean(axis=1).iloc[-1] * 25, 0, 100)
+
+            # Color coding
+            color = "red" if score < 25 else "orange" if score < 50 else "lightgreen" if score < 75 else "green"
+
+            # Append a mini gauge
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=score,
+                title={"text": ticker},
+                gauge={
+                    "axis": {"range": [0, 100]},
+                    "bar": {"color": "black"},
+                    "bgcolor": "white",
+                    "steps": [
+                        {"range": [0, 25], "color": "#ffcccc"},
+                        {"range": [25, 50], "color": "#fff2cc"},
+                        {"range": [50, 75], "color": "#d9f2d9"},
+                        {"range": [75, 100], "color": "#b6d7a8"},
+                    ]
+                },
+                domain={'row': 0, 'column': 0}
+            ))
+            gauges.append(fig)
+        except Exception as e:
+            st.warning(f"⚠️ Error processing {ticker}: {e}")
+
+    # 3. Layout gauges in 2 columns
+    cols = st.columns(2)
+    for i, g in enumerate(gauges):
+        with cols[i % 2]:
+            st.plotly_chart(g, use_container_width=True)
+
+    st.caption(f"Last updated: {end.strftime('%B %d, %Y')}")
+
