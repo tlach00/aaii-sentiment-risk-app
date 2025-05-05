@@ -473,90 +473,89 @@ with tab9:
         st.exception(e)
 
 
-# ------------------------- TAB 10: Stock-Specific Fear & Greed Dashboard -------------------------
+# ------------------------- TAB 10: Fear & Greed Dashboard for Top Stocks -------------------------
+# -------------------- TAB 10: Stock-Specific Fear & Greed Dashboard --------------------
 with tab10:
     import yfinance as yf
     import pandas as pd
     import numpy as np
     import plotly.graph_objects as go
-    import streamlit as st
+    import datetime
 
-    st.markdown("## 🧬 Stock-Specific Fear & Greed Index Dashboard")
+    st.markdown("## 📊 Real-Time Fear & Greed Dashboard for Top S&P 500 Stocks")
 
-    with st.expander("❓ How is this index calculated?"):
-        st.markdown("""
-        The **Stock-Specific Fear & Greed Index** combines 6 key components:
+    st.markdown("""
+    The index is calculated using **stock-specific metrics**:
+    
+    - **Volatility**: 20d and 50d std deviation of log returns
+    - **Momentum**: Price vs 125-day MA
+    - **Breadth**: 20-day return
+    - **Safe Haven Demand**: Relative return vs SPY (20d)
 
-        - **Volatility**: Stock’s 20-day and 50-day historical volatility.
-        - **Safe Haven Demand**: SPY/TLT ratio.
-        - **Junk Bond Demand**: HYG vs LQD yield spread.
-        - **Sentiment**: Options skew (put vs call interest).
-        - **Momentum**: Stock vs 125-day MA.
-        - **Breadth**: 20-day return or RSI.
+    All components are standardized (z-score), averaged, scaled to a 0–100 index, and displayed as a gauge.
+    """)
 
-        Each feature is standardized (z-score), averaged, and scaled from 0 to 100.
-        """)
+    tickers = ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA", "META", "GOOGL", "JPM", "BRK-B", "UNH"]
 
-    st.markdown("### 🏆 Fear & Greed Today — Top S&P 500 Companies")
+    start = datetime.datetime.today() - datetime.timedelta(days=365*2)
+    end = datetime.datetime.today()
 
-    top_stocks = ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "META", "TSLA", "UNH"]
-    bond_tickers = ["SPY", "TLT", "HYG", "LQD"]
+    stock_data = yf.download(tickers + ["SPY"], start=start, end=end)["Close"]
+    stock_data = stock_data.dropna(how="all")
 
-    cols = st.columns(4)
+    def calculate_fg_score(price_series, spy_series):
+        log_returns = np.log(price_series).diff()
 
-    for i, ticker in enumerate(top_stocks):
+        vol_20d = log_returns.rolling(20).std()
+        vol_50d = log_returns.rolling(50).std()
+        volatility = (vol_20d + vol_50d) / 2
+
+        ma_125 = price_series.rolling(125).mean()
+        momentum = 100 * (price_series - ma_125) / ma_125
+
+        breadth = 100 * price_series.pct_change(20)
+
+        rel_performance = (price_series.pct_change(20)) - (spy_series.pct_change(20))
+
+        df = pd.DataFrame({
+            "volatility": volatility,
+            "momentum": momentum,
+            "breadth": breadth,
+            "safehaven": rel_performance,
+        })
+        df = df.dropna()
+
+        z = (df - df.mean()) / df.std()
+        index = np.clip(50 + z.mean(axis=1) * 25, 0, 100)
+
+        return index[-1] if not index.empty else None
+
+    cols = st.columns(5)
+    for i, ticker in enumerate(tickers):
         try:
-            data = yf.download([ticker] + bond_tickers, period="6mo", interval="1d")["Close"]
-            stock = data[ticker]
-            data = data.dropna()
+            price_series = stock_data[ticker].dropna()
+            spy_series = stock_data["SPY"].dropna()
+            aligned = pd.concat([price_series, spy_series], axis=1).dropna()
+            score = calculate_fg_score(aligned[ticker], aligned["SPY"])
 
-            # Compute indicators
-            vol_20 = stock.pct_change().rolling(20).std()
-            vol_50 = stock.pct_change().rolling(50).std()
-            volatility = vol_20 / vol_50
-
-            safe_haven = data["SPY"] / data["TLT"]
-            junk_demand = data["HYG"] / data["LQD"]
-            momentum = (stock - stock.rolling(125).mean()) / stock.rolling(125).mean()
-            breadth = stock.pct_change(20)
-            sentiment = stock.rolling(5).std() / stock.rolling(10).std()  # proxy
-
-            df = pd.DataFrame({
-                "volatility": volatility,
-                "safehaven": safe_haven.pct_change(),
-                "junk": junk_demand.pct_change(),
-                "sentiment": sentiment,
-                "momentum": momentum,
-                "breadth": breadth
-            }).dropna()
-
-            z_df = (df - df.mean()) / df.std()
-            fng_scaled = np.clip(50 + z_df.mean(axis=1) * 10, 0, 100)
-
-            score = round(fng_scaled[-1], 1)
-            color = "#ffcccc" if score < 25 else "#fff2cc" if score < 50 else "#d9f2d9" if score < 75 else "#b6d7a8"
-
-            fig = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=score,
-                number={"font": {"color": color}},
-                gauge={
-                    'axis': {'range': [0, 100]},
-                    'bar': {'color': "black"},
-                    'steps': [
-                        {'range': [0, 25], 'color': '#ffcccc'},
-                        {'range': [25, 50], 'color': '#fff2cc'},
-                        {'range': [50, 75], 'color': '#d9f2d9'},
-                        {'range': [75, 100], 'color': '#b6d7a8'}
-                    ]
-                },
-                domain={'x': [0, 1], 'y': [0, 1]}
-            ))
-            fig.update_layout(margin=dict(t=10, b=0, l=0, r=0), height=230)
-            with cols[i % 4]:
-                st.plotly_chart(fig, use_container_width=True)
-                st.markdown(f"<div style='text-align:center; font-weight:bold; color:{color};'>{ticker}</div>", unsafe_allow_html=True)
+            with cols[i % 5]:
+                fig = go.Figure(go.Indicator(
+                    mode="gauge+number",
+                    value=score,
+                    title={"text": ticker},
+                    gauge={
+                        'axis': {'range': [0, 100]},
+                        'bar': {'color': "black"},
+                        'steps': [
+                            {'range': [0, 25], 'color': '#ffcccc'},
+                            {'range': [25, 50], 'color': '#fff2cc'},
+                            {'range': [50, 75], 'color': '#d9f2d9'},
+                            {'range': [75, 100], 'color': '#b6d7a8'},
+                        ]
+                    }
+                ))
+                fig.update_layout(width=240, height=240, margin=dict(t=20, b=20, l=0, r=0))
+                st.plotly_chart(fig)
 
         except Exception as e:
-            with cols[i % 4]:
-                st.warning(f"⚠️ Error processing {ticker}")
+            st.warning(f"⚠️ Error processing {ticker}: {e}")
