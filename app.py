@@ -402,7 +402,7 @@ with tab9:
             ],
             yaxis_title="Index Value (0–100)",
             xaxis_title="Date",
-            height=400,
+            height=600,
             margin=dict(l=40, r=40, t=30, b=30)
         )
         st.plotly_chart(fig_fng, use_container_width=True)
