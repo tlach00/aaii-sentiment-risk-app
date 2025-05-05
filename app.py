@@ -354,7 +354,7 @@ with tab9:
         # CNN Z-score scaling
         def normalize(series):
             z = (series - series.mean()) / series.std()
-            return np.clip(50 + z * 25, 0, 100)
+            return np.clip(50 + z * 28, 0, 100)
 
         fng_df = pd.DataFrame({
             "momentum": normalize(momentum),
