@@ -40,7 +40,8 @@ tab1, tab2, tab3, tab7, tab8, tab9 = st.tabs([
     "🧪 Z-Score Strategy Backtest",
     "🧠 Deep Q-Learning Strategy",
     "📉 Fear & Greed Index",
-    "😱 CNN F&G replication"
+    "😱 CNN F&G replication",
+    "👻 Stock-Level Fear & Greed"
 ])
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
@@ -461,4 +462,92 @@ with tab9:
     except Exception as e:
         st.error("❌ Error fetching or processing data.")
         st.exception(e)
+
+# ------------------------- NEW TAB: Stock-Level Fear & Greed -------------------------
+with tab10:
+    import yfinance as yf
+    import pandas as pd
+    import numpy as np
+    import plotly.graph_objects as go
+    import datetime
+
+    st.markdown("## 🔍 Stock-Level Fear & Greed Index")
+    st.markdown("""
+    This tab allows you to calculate a Fear & Greed-like index for any individual stock.
+    The score is based on seven sentiment and market structure indicators.
+    """)
+
+    stock_ticker = st.text_input("Enter stock ticker (e.g., AAPL, MSFT, META):", "AAPL")
+
+    # Download data
+    end = datetime.datetime.today()
+    start = datetime.datetime(2007, 1, 1)
+    try:
+        stock = yf.download(stock_ticker, start=start, end=end)["Close"]
+        spy = yf.download("SPY", start=start, end=end)["Close"]
+        tlt = yf.download("TLT", start=start, end=end)["Close"]
+        hyg = yf.download("HYG", start=start, end=end)["Close"]
+        lqd = yf.download("LQD", start=start, end=end)["Close"]
+
+        df = pd.DataFrame({
+            "Stock": stock,
+            "SPY": spy,
+            "TLT": tlt,
+            "HYG": hyg,
+            "LQD": lqd
+        }).dropna()
+
+        # Indicators
+        momentum_ma = df["Stock"].rolling(window=125).mean()
+        momentum = 100 * (df["Stock"] - momentum_ma) / momentum_ma
+
+        strength = 100 * (df["Stock"] > momentum_ma).rolling(window=50).mean()
+
+        returns = df["Stock"].pct_change()
+        breadth = 100 * returns.rolling(20).mean()
+
+        volatility = 100 - (df["Stock"].rolling(5).std() / df["Stock"].rolling(50).std()) * 100
+
+        safe_haven = (df["Stock"] / df["TLT"]).pct_change().rolling(20).mean() * 100
+
+        junk_demand = (df["HYG"] / df["LQD"]).pct_change().rolling(20).mean() * 100
+
+        # Z-score normalization
+        def normalize(series):
+            z = (series - series.mean()) / series.std()
+            return np.clip(50 + z * 25, 0, 100)
+
+        fg_df = pd.DataFrame({
+            "momentum": normalize(momentum),
+            "strength": normalize(strength),
+            "breadth": normalize(breadth),
+            "volatility": normalize(volatility),
+            "safehaven": normalize(safe_haven),
+            "junk": normalize(junk_demand)
+        }, index=df.index)
+
+        fg_df["FNG_Index"] = fg_df.mean(axis=1)
+        fg_df.dropna(inplace=True)
+
+        # Plot
+        st.markdown(f"### 📈 Fear & Greed Index for {stock_ticker.upper()}")
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=fg_df.index, y=fg_df["FNG_Index"], name="F&G Index", mode="lines"))
+        fig.update_layout(
+            yaxis_title="Index Value (0–100)",
+            xaxis_title="Date",
+            height=500,
+            shapes=[
+                dict(type="rect", x0=fg_df.index[0], x1=fg_df.index[-1], y0=0, y1=25,
+                     fillcolor="#ffcccc", opacity=0.3, line_width=0),
+                dict(type="rect", x0=fg_df.index[0], x1=fg_df.index[-1], y0=75, y1=100,
+                     fillcolor="#d9f2d9", opacity=0.3, line_width=0),
+            ]
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    except Exception as e:
+        st.error("❌ Error loading data for the selected stock.")
+        st.exception(e)
+
 
