@@ -478,116 +478,104 @@ with tab10:
     import pandas as pd
     import numpy as np
     import plotly.graph_objects as go
-    import streamlit as st
     import datetime
+    from plotly.subplots import make_subplots
 
     st.markdown("## 🧬 Stock-Specific Fear & Greed Index Dashboard")
 
-    # Load top 10 + full S&P tickers
-    top10 = ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "TSLA", "META", "JPM", "BRK-B", "UNH"]
-    with open("tickers_sp500.txt") as f:
-        all_sp500 = [line.strip() for line in f.readlines()]
+    # Explanation at the top
+    st.markdown("""
+    This Fear & Greed index is calculated using stock-specific indicators:
+    
+    - **Volatility**: 20d vs 50d historical volatility of the stock
+    - **Safe Haven Demand**: Ratio of SPY to TLT (proxy for risk appetite)
+    - **Junk Bond Demand**: Ratio of HYG to LQD (corporate credit risk appetite)
+    - **Momentum**: Stock vs 125-day moving average
+    - **Breadth**: 20-day return of the stock (proxy for directional strength)
+    
+    These signals are standardized (z-score), averaged, then scaled between 0–100 to represent fear (0) to greed (100).
+    """)
+
+    # Top 10 most capitalized S&P 500 stocks
+    top_stocks = ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "TSLA", "META", "JPM", "BRK-B", "UNH"]
+    tickers_display = ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "TSLA", "META", "JPM", "BRK-B", "UNH"]
 
     st.markdown("### 🏆 Fear & Greed Today — Top S&P 500 Companies")
+    cols = st.columns(5)
 
-    def compute_stock_fng(ticker):
-        yf_ticker = ticker.replace("-", ".")
+    def calculate_stock_fng(ticker):
+        if ticker == "BRK-B":
+            yf_ticker = "BRK-B"
+        else:
+            yf_ticker = ticker
+
         try:
-            data = yf.download([yf_ticker, "TLT", "HYG", "LQD"], start="2022-01-01", progress=False)["Close"]
-            data.dropna(inplace=True)
+            data = yf.download([yf_ticker, "SPY", "TLT", "HYG", "LQD"], period="6mo", interval="1d")
+            px_data = data['Close'].dropna()
+            
+            price = px_data[yf_ticker]
+            spy = px_data["SPY"]
+            tlt = px_data["TLT"]
+            hyg = px_data["HYG"]
+            lqd = px_data["LQD"]
 
-            stock = data[yf_ticker]
-            tlt = data["TLT"]
-            hyg = data["HYG"]
-            lqd = data["LQD"]
+            vol_20 = price.pct_change().rolling(20).std()
+            vol_50 = price.pct_change().rolling(50).std()
+            volatility = 100 * (vol_20 / vol_50)
 
-            # Indicators
-            volatility = stock.pct_change().rolling(20).std()
-            safehaven = (stock / tlt).pct_change().rolling(20).mean()
-            junk = (hyg / lqd).pct_change().rolling(20).mean()
-            momentum = 100 * (stock - stock.rolling(125).mean()) / stock.rolling(125).mean()
-            breadth = 100 * stock.pct_change().rolling(20).mean()
+            safe_haven = (spy / tlt).pct_change().rolling(20).mean() * 100
+            junk_demand = (hyg / lqd).pct_change().rolling(20).mean() * 100
+            momentum = 100 * (price - price.rolling(125).mean()) / price.rolling(125).mean()
+            breadth = price.pct_change(20) * 100
 
             df = pd.DataFrame({
                 "volatility": volatility,
-                "safehaven": safehaven,
-                "junk": junk,
+                "safehaven": safe_haven,
+                "junk": junk_demand,
                 "momentum": momentum,
                 "breadth": breadth
             }).dropna()
 
-            z = (df - df.mean()) / df.std()
-            fng = np.clip(50 + z.mean(axis=1) * 25, 0, 100)
-            return round(fng.iloc[-1], 1)
+            z_scores = (df - df.mean()) / df.std()
+            index = z_scores.mean(axis=1)
+            fng_scaled = np.clip(50 + index * 10, 0, 100)
 
-        except Exception as e:
+            return round(fng_scaled[-1], 1)
+
+        except Exception:
             return None
 
-    col1, col2 = st.columns(2)
-    for i, ticker in enumerate(top10):
-        score = compute_stock_fng(ticker)
-        if score is None:
-            st.warning(f"⚠️ Error processing {ticker}")
-            continue
+    def get_score_color(score):
+        if score <= 25:
+            return "#ff9999"
+        elif score <= 50:
+            return "#fff2cc"
+        elif score <= 75:
+            return "#d9f2d9"
+        else:
+            return "#b6d7a8"
 
-        col = col1 if i % 2 == 0 else col2
-        with col:
-            fig = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=score,
-                title={"text": ticker, "font": {"color": "black", "size": 14}},
-                gauge={
-                    'axis': {'range': [0, 100]},
-                    'bar': {'color': "black"},
-                    'steps': [
-                        {'range': [0, 25], 'color': '#ffcccc'},
-                        {'range': [25, 50], 'color': '#fff2cc'},
-                        {'range': [50, 75], 'color': '#d9f2d9'},
-                        {'range': [75, 100], 'color': '#b6d7a8'},
-                    ]
-                },
-                number={'font': {'size': 36}}
-            ))
-            fig.update_layout(width=300, height=220, margin=dict(t=30, b=20, l=20, r=20))
-            st.plotly_chart(fig)
-
-    st.markdown("---")
-    st.markdown("### 🔍 Explore Any S&P 500 Stock")
-
-    selected_ticker = st.selectbox("Select a stock:", options=[""] + top10 + sorted(set(all_sp500) - set(top10)))
-    date_range = st.date_input("Select date range:", [datetime.date(2023, 1, 1), datetime.date.today()])
-
-    if selected_ticker:
-        try:
-            yf_ticker = selected_ticker.replace("-", ".")
-            df = yf.download([yf_ticker, "TLT", "HYG", "LQD"], start=date_range[0], end=date_range[1], progress=False)["Close"]
-            df.dropna(inplace=True)
-
-            stock = df[yf_ticker]
-            tlt = df["TLT"]
-            hyg = df["HYG"]
-            lqd = df["LQD"]
-
-            volatility = stock.pct_change().rolling(20).std()
-            safehaven = (stock / tlt).pct_change().rolling(20).mean()
-            junk = (hyg / lqd).pct_change().rolling(20).mean()
-            momentum = 100 * (stock - stock.rolling(125).mean()) / stock.rolling(125).mean()
-            breadth = 100 * stock.pct_change().rolling(20).mean()
-
-            df_fng = pd.DataFrame({
-                "volatility": volatility,
-                "safehaven": safehaven,
-                "junk": junk,
-                "momentum": momentum,
-                "breadth": breadth
-            }).dropna()
-
-            z = (df_fng - df_fng.mean()) / df_fng.std()
-            fng_series = np.clip(50 + z.mean(axis=1) * 25, 0, 100)
-
-            st.markdown(f"#### 📊 Fear & Greed Score Today: **{round(fng_series.iloc[-1], 1)}**")
-            st.line_chart(fng_series.rename("Fear & Greed Index"))
-            st.line_chart(stock.rename("Stock Price"))
-
-        except Exception as e:
-            st.warning("⚠️ Could not retrieve or compute data for this ticker.")
+    for i, ticker in enumerate(top_stocks):
+        with cols[i % 5]:
+            score = calculate_stock_fng(ticker)
+            if score is not None:
+                fig = go.Figure(go.Indicator(
+                    mode="gauge+number",
+                    value=score,
+                    gauge={
+                        'axis': {'range': [0, 100]},
+                        'bar': {'color': "black"},
+                        'steps': [
+                            {'range': [0, 25], 'color': '#ffcccc'},
+                            {'range': [25, 50], 'color': '#fff2cc'},
+                            {'range': [50, 75], 'color': '#d9f2d9'},
+                            {'range': [75, 100], 'color': '#b6d7a8'},
+                        ]
+                    },
+                    number={'font': {'size': 28}}
+                ))
+                fig.update_layout(width=200, height=180, margin=dict(t=20, b=0, l=0, r=0))
+                st.plotly_chart(fig, use_container_width=True)
+                st.markdown(f"<div style='text-align:center; color:{get_score_color(score)}'><b>{ticker}</b></div>", unsafe_allow_html=True)
+            else:
+                st.warning(f"⚠️ Error processing {ticker}")
