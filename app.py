@@ -308,7 +308,6 @@ with tab8:
     except Exception:
         st.caption("Last updated: Unavailable")
 # ------------------------- TAB 9: CNN Fear & Greed Replication + ML Strategy -------------------------
-# ------------------------- TAB 9: CNN Fear & Greed Replication + ML Strategy -------------------------
 with tab9:
     import yfinance as yf
     import pandas as pd
@@ -354,7 +353,7 @@ with tab9:
         # CNN Z-score scaling
         def normalize(series):
             z = (series - series.mean()) / series.std()
-            return 50 + z * 10
+            return 50 + z * 20
 
         fng_df = pd.DataFrame({
             "momentum": normalize(momentum),
