@@ -307,7 +307,6 @@ with tab8:
         st.caption(f"Last updated {df_fg['Date'].iloc[-1].strftime('%B %d at %I:%M %p')} ET")
     except Exception:
         st.caption("Last updated: Unavailable")
-
 # ------------------------- TAB 9: CNN Fear & Greed Replication + ML Strategy -------------------------
 with tab9:
     import yfinance as yf
@@ -427,33 +426,33 @@ with tab9:
 
         # ML Strategy below chart
         st.markdown("### 📈 ML Strategy vs Buy & Hold")
-        
+
         ml_df = fng_df.copy()
         ml_df["target"] = data["SPY"].pct_change().shift(-1)
         ml_df.dropna(inplace=True)
         ml_df["label"] = np.where(ml_df["target"] > 0.001, 1, np.where(ml_df["target"] < -0.001, -1, 0))
-        
+
         split_date = "2020-01-01"
         X_train = ml_df.loc[:split_date].drop(columns=["target", "label"])
         y_train = ml_df.loc[:split_date]["label"]
         X_test = ml_df.loc[split_date:].drop(columns=["target", "label"])
         returns_test = ml_df.loc[split_date:]["target"]
         dates_test = returns_test.index
-        
+
         scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
-        
+
         model = LogisticRegression(multi_class='ovr', solver='lbfgs', max_iter=1000, random_state=42)
         model.fit(X_train_scaled, y_train)
         predictions = model.predict(X_test_scaled)
-        
+
         capital = 10000
         strat = [capital]
         buy_hold = [capital]
         positions = []
         trades = []
-        
+
         for i, r in enumerate(returns_test):
             action = predictions[i]  # -1, 0, 1
             positions.append(action)
@@ -461,24 +460,24 @@ with tab9:
             buy_hold.append(buy_hold[-1] * (1 + r))
             if i > 0 and predictions[i] != predictions[i-1]:
                 trades.append({"Date": dates_test[i], "Position": action})
-        
+
         strat = strat[1:]
         buy_hold = buy_hold[1:]
-        
+
         plot_df = pd.DataFrame({
             "Date": dates_test,
             "ML Strategy": strat,
             "Buy & Hold": buy_hold
         })
-        
+
         fig_perf = px.line(plot_df, x="Date", y=["ML Strategy", "Buy & Hold"],
                            labels={"value": "Portfolio Value", "variable": "Strategy"},
                            title="ML Strategy vs Buy & Hold")
         fig_perf.update_layout(height=400)
-        
+
         # Optional F&G index background
         show_fng = st.checkbox("📊 Overlay historical Fear & Greed Index", value=False)
-        
+
         if show_fng:
             fng_subset = fng_df.loc[dates_test]
             fig_perf.add_trace(go.Scatter(
@@ -499,11 +498,16 @@ with tab9:
                     range=[0, 100]
                 )
             )
-        
+
         st.plotly_chart(fig_perf, use_container_width=True)
-        
+
         # Trade list
         st.markdown("### 📋 List of Trades (Strategy Position Changes)")
         trade_df = pd.DataFrame(trades)
         trade_df["Position"] = trade_df["Position"].map({1: "Long", 0: "Neutral", -1: "Short"})
         st.dataframe(trade_df.set_index("Date"))
+
+    except Exception as e:
+        st.error("❌ Error fetching or processing data.")
+        st.exception(e)
+
