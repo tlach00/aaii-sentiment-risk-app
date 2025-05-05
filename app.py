@@ -474,125 +474,124 @@ with tab9:
 
 
 # ------------------------- TAB 10: Stock-Specific F&G Mini Dashboard -------------------------
+# ------------------------- TAB 10: Stock Fear & Greed Index -------------------------
 with tab10:
     import yfinance as yf
     import pandas as pd
     import numpy as np
-    import plotly.graph_objects as go
     import datetime
+    import plotly.graph_objects as go
+    import plotly.express as px
+    import os
 
-    st.markdown("## 💡 Real-Time Fear & Greed Dashboard for Top S&P 500 Stocks")
+    st.markdown("## 📊 Stock-Specific Fear & Greed Index Dashboard")
 
-    top_stocks = ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA", "META", "GOOGL", "JPM", "BRK-B", "UNH"]
-
-    def calculate_fng_score(ticker):
-        try:
-            end = datetime.datetime.today()
-            start = end - datetime.timedelta(days=365)
-            df = yf.download(ticker, start=start, end=end)["Close"].dropna()
-            if len(df) < 200:
-                return None
-
-            returns = np.log(df / df.shift(1))
-            vol_20 = returns.rolling(20).std()
-            vol_50 = returns.rolling(50).std()
-            volatility = vol_20 + vol_50
-
-            ma_125 = df.rolling(125).mean()
-            momentum = 100 * (df - ma_125) / ma_125
-
-            breadth = 100 * df.pct_change(20)
-
-            spy = yf.download("SPY", start=start, end=end)["Close"].dropna()
-            common = df.index.intersection(spy.index)
-            rel_return = (df.pct_change(20).loc[common] - spy.pct_change(20).loc[common]) * 100
-            safe_haven = rel_return
-
-            fng_df = pd.DataFrame({
-                "volatility": volatility,
-                "momentum": momentum,
-                "breadth": breadth,
-                "safehaven": safe_haven
-            }).dropna()
-
-            z = (fng_df - fng_df.mean()) / fng_df.std()
-            fng_scaled = 50 + z.mean(axis=1) * 20
-            fng_scaled = np.clip(fng_scaled, 0, 100)
-
-            return round(fng_scaled[-1], 1), fng_scaled
-
-        except:
-            return None, None
-
-    col1, col2, col3 = st.columns(3)
-    cols = [col1, col2, col3]
-    for i, ticker in enumerate(top_stocks):
-        score, _ = calculate_fng_score(ticker)
-        if score is not None:
-            fig = go.Figure(go.Indicator(
-                mode="gauge+number",
-                value=score,
-                title={'text': ticker},
-                number={'font': {'size': 28, 'color':
-                    "#d62728" if score < 25 else
-                    "#ff7f0e" if score < 50 else
-                    "#2ca02c" if score < 75 else
-                    "#1f77b4"}},
-                gauge={
-                    'axis': {'range': [0, 100]},
-                    'bar': {'color': "black"},
-                    'steps': [
-                        {'range': [0, 25], 'color': '#ffcccc'},
-                        {'range': [25, 50], 'color': '#fff2cc'},
-                        {'range': [50, 75], 'color': '#d9f2d9'},
-                        {'range': [75, 100], 'color': '#b6d7a8'}
-                    ]
-                }
-            ))
-            fig.update_layout(height=250, margin=dict(t=20, b=10, l=10, r=10))
-            cols[i % 3].plotly_chart(fig, use_container_width=True)
-        else:
-            cols[i % 3].warning(f"⚠️ Error processing {ticker}")
-
-    st.markdown("---")
-    st.markdown("### 🔎 Explore Any S&P 500 Stock")
-
+    # Load full S&P 500 ticker list
     with open("tickers_sp500.txt") as f:
-        all_sp500 = [line.strip() for line in f.readlines() if line.strip()]
+        all_tickers = [line.strip() for line in f.readlines() if line.strip() != ""]
 
-    selected = st.selectbox("Select a stock:", options=all_sp500, index=0)
-    date_range = st.date_input("Select date range:", [datetime.date(2023, 1, 1), datetime.date.today()])
+    # Top 10 selected stocks
+    top10 = ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA", "META", "GOOGL", "JPM", "BRK.B", "UNH"]
 
-    score, history = calculate_fng_score(selected)
+    def compute_stock_fg(ticker):
+        try:
+            df = yf.download([ticker, "SPY", "XLU", "HYG", "LQD"], period="1y", interval="1d")['Close']
+            df.dropna(inplace=True)
 
-    if score is not None:
-        st.metric(label=f"Today's Fear & Greed Score for {selected}", value=f"{score}/100")
+            stock = df[ticker]
+            stock_ma = stock.rolling(125).mean()
+            momentum = 100 * (stock - stock_ma) / stock_ma
 
-        filtered = history.loc[date_range[0]:date_range[1]]
-        price = yf.download(selected, start=filtered.index.min(), end=filtered.index.max())["Close"].dropna()
+            strength = 100 * (stock > stock_ma).rolling(50).mean()
+            breadth = 100 * stock.pct_change(20)
 
-        st.plotly_chart(
-            go.Figure([
-                go.Scatter(x=filtered.index, y=filtered, name="Fear & Greed Index"),
-                go.Scatter(x=price.index, y=price, name="Stock Price", yaxis="y2")
-            ]).update_layout(
-                yaxis=dict(title="F&G Index", range=[0, 100]),
-                yaxis2=dict(title="Price", overlaying="y", side="right"),
-                title=f"Historical View for {selected}",
-                height=500
-            ),
-            use_container_width=True
+            vix_proxy = df["SPY"]  # fallback if no VIX
+            put_call = 100 - (vix_proxy.rolling(5).mean() - vix_proxy.mean()) / vix_proxy.std() * 20
+
+            volatility = 100 - ((stock - stock.rolling(50).mean()) / stock.rolling(50).mean() * 100)
+
+            safe_haven = (stock / df["XLU"]).pct_change(20) * 100
+            junk_demand = (df["HYG"] / df["LQD"]).pct_change(20) * 100
+
+            df_feat = pd.DataFrame({
+                "momentum": momentum,
+                "strength": strength,
+                "breadth": breadth,
+                "putcall": put_call,
+                "volatility": volatility,
+                "safehaven": safe_haven,
+                "junk": junk_demand
+            }, index=df.index).dropna()
+
+            z_scores = (df_feat - df_feat.mean()) / df_feat.std()
+            index = (z_scores.mean(axis=1) * 25 + 50).clip(0, 100)
+
+            return index
+        except:
+            return None
+
+    # --- DASHBOARD: Top 10 Gauges ---
+    st.markdown("### 🏆 Fear & Greed Today — Top 10 Stocks")
+    cols = st.columns(5)
+    for i, ticker in enumerate(top10):
+        fg = compute_stock_fg(ticker)
+        if fg is not None:
+            score = int(fg[-1])
+            color = (
+                "#ffcccc" if score < 25 else
+                "#fff2cc" if score < 50 else
+                "#d9f2d9" if score < 75 else
+                "#b6d7a8"
+            )
+            with cols[i % 5]:
+                fig = go.Figure(go.Indicator(
+                    mode="gauge+number",
+                    value=score,
+                    title={'text': ticker},
+                    gauge={
+                        'axis': {'range': [0, 100]},
+                        'bar': {'color': "black"},
+                        'bgcolor': "white",
+                        'steps': [
+                            {'range': [0, 25], 'color': '#ffcccc'},
+                            {'range': [25, 50], 'color': '#fff2cc'},
+                            {'range': [50, 75], 'color': '#d9f2d9'},
+                            {'range': [75, 100], 'color': '#b6d7a8'}
+                        ]
+                    }
+                ))
+                fig.update_layout(height=180, margin=dict(t=20, b=20))
+                st.plotly_chart(fig, use_container_width=True)
+
+    # --- DROPDOWN ANALYSIS ---
+    st.markdown("### 🔍 Select Stock for Detailed Fear & Greed Analysis")
+    selected = st.selectbox("Choose a stock", options=top10 + sorted(set(all_tickers) - set(top10)))
+    fg_index = compute_stock_fg(selected)
+
+    if fg_index is not None:
+        # Date range selection
+        st.markdown("#### 📅 Select Date Range")
+        date_min, date_max = fg_index.index.min(), fg_index.index.max()
+        start_date, end_date = st.slider("Date range:", min_value=date_min, max_value=date_max,
+                                         value=(date_min, date_max), format="YYYY-MM-DD")
+        fg_sel = fg_index.loc[start_date:end_date]
+
+        st.metric(label=f"Current Fear & Greed Score for {selected}", value=int(fg_sel.iloc[-1]))
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=fg_sel.index, y=fg_sel, name="Fear & Greed", mode="lines"))
+
+        # Also plot price
+        df_price = yf.download(selected, start=start_date, end=end_date)['Close']
+        fig.add_trace(go.Scatter(x=df_price.index, y=df_price, name="Price", yaxis="y2", line=dict(color="gray")))
+
+        fig.update_layout(
+            title=f"{selected}: Fear & Greed Index vs Price",
+            yaxis=dict(title="Fear & Greed", range=[0, 100]),
+            yaxis2=dict(title="Price", overlaying="y", side="right"),
+            xaxis_title="Date",
+            height=500
         )
-
-        st.markdown("### 📘 Explanation")
-        st.markdown("""
-        The Fear & Greed index is built using four components:
-        - **Volatility**: Stock's 20d and 50d standard deviation of log returns.
-        - **Momentum**: Price relative to 125-day moving average.
-        - **Breadth**: 20-day percent return.
-        - **Safe Haven Demand**: Return spread vs SPY (market baseline).
-
-        These values are standardized (z-score), averaged, and scaled between 0–100.
-        """)
+        st.plotly_chart(fig, use_container_width=True)
     else:
-        st.warning("Could not compute index for this stock. Try another.")
+        st.warning("Could not retrieve or compute data for this ticker.")
