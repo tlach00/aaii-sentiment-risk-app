@@ -473,76 +473,81 @@ with tab9:
         st.exception(e)
 
 
-# ------------------------- TAB 10: Fear & Greed Dashboard for Top Stocks -------------------------
-# -------------------- TAB 10: Stock-Specific Fear & Greed Dashboard --------------------
 with tab10:
-    import yfinance as yf
     import pandas as pd
     import numpy as np
-    import plotly.graph_objects as go
+    import yfinance as yf
     import datetime
+    import plotly.graph_objects as go
+    import streamlit as st
 
-    st.markdown("## 📊 Real-Time Fear & Greed Dashboard for Top S&P 500 Stocks")
+    st.markdown("## 🧬 Stock-Specific Fear & Greed Index Dashboard")
 
-    st.markdown("""
-    The index is calculated using **stock-specific metrics**:
-    
-    - **Volatility**: 20d and 50d std deviation of log returns
-    - **Momentum**: Price vs 125-day MA
-    - **Breadth**: 20-day return
-    - **Safe Haven Demand**: Relative return vs SPY (20d)
+    with st.expander("❓ How is this index calculated?"):
+        st.markdown("""
+        The **Stock-Specific Fear & Greed Index** combines 6 key components:
 
-    All components are standardized (z-score), averaged, scaled to a 0–100 index, and displayed as a gauge.
-    """)
+        - **Volatility**: Stock’s 20-day and 50-day historical volatility.
+        - **Safe Haven Demand**: SPY/TLT ratio.
+        - **Junk Bond Demand**: HYG vs LQD yield spread.
+        - **Sentiment**: Options skew (put vs call interest).
+        - **Momentum**: Stock vs 125-day MA.
+        - **Breadth**: 20-day return or RSI.
 
-    tickers = ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA", "META", "GOOGL", "JPM", "BRK-B", "UNH"]
+        Each feature is standardized (z-score), averaged, and scaled from 0 to 100.
+        """)
 
-    start = datetime.datetime.today() - datetime.timedelta(days=365*2)
-    end = datetime.datetime.today()
+    st.markdown("### 🏆 Fear & Greed Today — Top S&P 500 Companies")
 
-    stock_data = yf.download(tickers + ["SPY"], start=start, end=end)["Close"]
-    stock_data = stock_data.dropna(how="all")
+    top_tickers = ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "META", "TSLA", "UNH"]
+    safe_assets = ["SPY", "TLT", "HYG", "LQD"]
 
-    def calculate_fg_score(price_series, spy_series):
-        log_returns = np.log(price_series).diff()
-
-        vol_20d = log_returns.rolling(20).std()
-        vol_50d = log_returns.rolling(50).std()
-        volatility = (vol_20d + vol_50d) / 2
-
-        ma_125 = price_series.rolling(125).mean()
-        momentum = 100 * (price_series - ma_125) / ma_125
-
-        breadth = 100 * price_series.pct_change(20)
-
-        rel_performance = (price_series.pct_change(20)) - (spy_series.pct_change(20))
-
-        df = pd.DataFrame({
-            "volatility": volatility,
-            "momentum": momentum,
-            "breadth": breadth,
-            "safehaven": rel_performance,
-        })
-        df = df.dropna()
-
-        z = (df - df.mean()) / df.std()
-        index = np.clip(50 + z.mean(axis=1) * 25, 0, 100)
-
-        return index[-1] if not index.empty else None
-
-    cols = st.columns(5)
-    for i, ticker in enumerate(tickers):
+    cols = st.columns(4)
+    for i, ticker in enumerate(top_tickers):
         try:
-            price_series = stock_data[ticker].dropna()
-            spy_series = stock_data["SPY"].dropna()
-            aligned = pd.concat([price_series, spy_series], axis=1).dropna()
-            score = calculate_fg_score(aligned[ticker], aligned["SPY"])
+            df = yf.download([ticker] + safe_assets, period="6mo", interval="1d")['Close'].dropna()
 
-            with cols[i % 5]:
+            # Volatility
+            vol20 = df[ticker].pct_change().rolling(20).std()
+            vol50 = df[ticker].pct_change().rolling(50).std()
+            volatility = 100 * (vol20 / vol50)
+
+            # Safe haven demand
+            safe = (df["SPY"] / df["TLT"]).pct_change().rolling(20).mean() * 100
+
+            # Junk bond
+            junk = (df["HYG"] / df["LQD"]).pct_change().rolling(20).mean() * 100
+
+            # Sentiment (simulated with volatility skew)
+            sentiment = 100 * (vol50 / vol20)
+
+            # Momentum
+            ma125 = df[ticker].rolling(125).mean()
+            momentum = 100 * (df[ticker] - ma125) / ma125
+
+            # Breadth (20-day return)
+            breadth = 100 * df[ticker].pct_change(20)
+
+            features = pd.DataFrame({
+                "volatility": volatility,
+                "safehaven": safe,
+                "junk": junk,
+                "sentiment": sentiment,
+                "momentum": momentum,
+                "breadth": breadth
+            }, index=df.index).dropna()
+
+            z_scores = (features - features.mean()) / features.std()
+            fg = 50 + z_scores.mean(axis=1) * 10
+            fg_scaled = np.clip(fg, 0, 100)
+            score = round(fg_scaled[-1], 1)
+
+            color = "#ffcccc" if score < 25 else "#fff2cc" if score < 50 else "#d9f2d9" if score < 75 else "#b6d7a8"
+
+            with cols[i % 4]:
                 fig = go.Figure(go.Indicator(
                     mode="gauge+number",
                     value=score,
-                    title={"text": ticker},
                     gauge={
                         'axis': {'range': [0, 100]},
                         'bar': {'color': "black"},
@@ -554,8 +559,55 @@ with tab10:
                         ]
                     }
                 ))
-                fig.update_layout(width=240, height=240, margin=dict(t=20, b=20, l=0, r=0))
-                st.plotly_chart(fig)
+                fig.update_layout(height=220, margin=dict(t=10, b=10, l=10, r=10))
+                st.plotly_chart(fig, use_container_width=True)
+                st.markdown(f"<div style='text-align:center; color:{color}; font-weight:bold;'>{ticker}</div>", unsafe_allow_html=True)
 
         except Exception as e:
-            st.warning(f"⚠️ Error processing {ticker}: {e}")
+            with cols[i % 4]:
+                st.warning(f"⚠️ Error processing {ticker}")
+
+    # ⬇️ Dropdown for any stock in tickers_sp500.txt
+    st.markdown("### 🔎 Explore Any S&P 500 Stock")
+
+    with open("tickers_sp500.txt") as f:
+        all_tickers = [line.strip() for line in f if line.strip()]
+
+    stock = st.selectbox("Select a stock:", all_tickers)
+    date_range = st.date_input("Select date range:",
+                               value=(datetime.date(2023, 1, 1), datetime.date.today()))
+
+    try:
+        df = yf.download([stock] + safe_assets, start=date_range[0], end=date_range[1])['Close'].dropna()
+
+        vol20 = df[stock].pct_change().rolling(20).std()
+        vol50 = df[stock].pct_change().rolling(50).std()
+        volatility = 100 * (vol20 / vol50)
+
+        safe = (df["SPY"] / df["TLT"]).pct_change().rolling(20).mean() * 100
+        junk = (df["HYG"] / df["LQD"]).pct_change().rolling(20).mean() * 100
+        sentiment = 100 * (vol50 / vol20)
+        ma125 = df[stock].rolling(125).mean()
+        momentum = 100 * (df[stock] - ma125) / ma125
+        breadth = 100 * df[stock].pct_change(20)
+
+        features = pd.DataFrame({
+            "volatility": volatility,
+            "safehaven": safe,
+            "junk": junk,
+            "sentiment": sentiment,
+            "momentum": momentum,
+            "breadth": breadth
+        }, index=df.index).dropna()
+
+        z_scores = (features - features.mean()) / features.std()
+        fg = 50 + z_scores.mean(axis=1) * 10
+        fg_scaled = np.clip(fg, 0, 100)
+
+        # Plot index & price
+        st.markdown(f"#### 📊 Today's F&G Index for {stock}: **{round(fg_scaled[-1], 2)}**")
+        st.line_chart(fg_scaled.rename("Fear & Greed Index"))
+        st.line_chart(df[stock].rename("Stock Price"))
+
+    except:
+        st.warning("Could not retrieve or compute data for this ticker.")
