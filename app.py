@@ -34,7 +34,7 @@ def load_clean_data():
     return df.dropna()
 raw_df = load_raw_excel()
 clean_df = load_clean_data()
-tab1, tab2, tab3, tab7, tab8, tab9, tab 10 = st.tabs([
+tab1, tab2, tab3, tab7, tab8, tab9, tab10 = st.tabs([
     "📁 Raw Excel Viewer",
     "📈 Interactive Dashboard",
     "🧪 Z-Score Strategy Backtest",
