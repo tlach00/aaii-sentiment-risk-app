@@ -472,14 +472,14 @@ with tab9:
         st.error("❌ Error fetching or processing data.")
         st.exception(e)
 
-# ------------------------- TAB 10: Stock-Specific Fear & Greed Index -------------------------
+
+# ------------------------- TAB 10: Stock-Specific Fear & Greed Dashboard -------------------------
 with tab10:
     import yfinance as yf
     import pandas as pd
     import numpy as np
     import plotly.graph_objects as go
     import streamlit as st
-    from datetime import datetime
 
     st.markdown("## 🧬 Stock-Specific Fear & Greed Index Dashboard")
 
@@ -500,80 +500,63 @@ with tab10:
     st.markdown("### 🏆 Fear & Greed Today — Top S&P 500 Companies")
 
     top_stocks = ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "META", "TSLA", "UNH"]
-    col1, col2 = st.columns(2)
+    bond_tickers = ["SPY", "TLT", "HYG", "LQD"]
+
+    cols = st.columns(4)
 
     for i, ticker in enumerate(top_stocks):
-        col = col1 if i % 2 == 0 else col2
-        with col:
-            try:
-                stock = yf.Ticker(ticker)
-                data = stock.history(period="6mo")
-                if data.empty:
-                    raise ValueError("No price data")
+        try:
+            data = yf.download([ticker] + bond_tickers, period="6mo", interval="1d")["Close"]
+            stock = data[ticker]
+            data = data.dropna()
 
-                # Indicators
-                vol_20 = data['Close'].pct_change().rolling(20).std()
-                vol_50 = data['Close'].pct_change().rolling(50).std()
-                momentum = 100 * (data['Close'] - data['Close'].rolling(125).mean()) / data['Close'].rolling(125).mean()
-                rsi_20 = data['Close'].pct_change().rolling(20).mean()
+            # Compute indicators
+            vol_20 = stock.pct_change().rolling(20).std()
+            vol_50 = stock.pct_change().rolling(50).std()
+            volatility = vol_20 / vol_50
 
-                # Safe Haven Demand
-                spy = yf.download("SPY", period="6mo")['Close']
-                tlt = yf.download("TLT", period="6mo")['Close']
-                safe_haven = (spy / tlt).pct_change().rolling(20).mean()
+            safe_haven = data["SPY"] / data["TLT"]
+            junk_demand = data["HYG"] / data["LQD"]
+            momentum = (stock - stock.rolling(125).mean()) / stock.rolling(125).mean()
+            breadth = stock.pct_change(20)
+            sentiment = stock.rolling(5).std() / stock.rolling(10).std()  # proxy
 
-                # Junk Bond Demand
-                hyg = yf.download("HYG", period="6mo")['Close']
-                lqd = yf.download("LQD", period="6mo")['Close']
-                junk = (hyg / lqd).pct_change().rolling(20).mean()
+            df = pd.DataFrame({
+                "volatility": volatility,
+                "safehaven": safe_haven.pct_change(),
+                "junk": junk_demand.pct_change(),
+                "sentiment": sentiment,
+                "momentum": momentum,
+                "breadth": breadth
+            }).dropna()
 
-                # Options Sentiment fallback
-                try:
-                    calls = stock.option_chain().calls.openInterest.sum()
-                    puts = stock.option_chain().puts.openInterest.sum()
-                    sentiment = 100 * (puts - calls) / (puts + calls)
-                except:
-                    sentiment = np.nan
+            z_df = (df - df.mean()) / df.std()
+            fng_scaled = np.clip(50 + z_df.mean(axis=1) * 10, 0, 100)
 
-                df = pd.DataFrame({
-                    "vol20": vol_20,
-                    "vol50": vol_50,
-                    "momentum": momentum,
-                    "breadth": rsi_20,
-                    "safehaven": safe_haven,
-                    "junk": junk,
-                    "sentiment": sentiment
-                }).dropna()
+            score = round(fng_scaled[-1], 1)
+            color = "#ffcccc" if score < 25 else "#fff2cc" if score < 50 else "#d9f2d9" if score < 75 else "#b6d7a8"
 
-                if df.empty:
-                    raise ValueError("Not enough indicator data")
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=score,
+                number={"font": {"color": color}},
+                gauge={
+                    'axis': {'range': [0, 100]},
+                    'bar': {'color': "black"},
+                    'steps': [
+                        {'range': [0, 25], 'color': '#ffcccc'},
+                        {'range': [25, 50], 'color': '#fff2cc'},
+                        {'range': [50, 75], 'color': '#d9f2d9'},
+                        {'range': [75, 100], 'color': '#b6d7a8'}
+                    ]
+                },
+                domain={'x': [0, 1], 'y': [0, 1]}
+            ))
+            fig.update_layout(margin=dict(t=10, b=0, l=0, r=0), height=230)
+            with cols[i % 4]:
+                st.plotly_chart(fig, use_container_width=True)
+                st.markdown(f"<div style='text-align:center; font-weight:bold; color:{color};'>{ticker}</div>", unsafe_allow_html=True)
 
-                # Z-score normalization
-                z = (df - df.mean()) / df.std()
-                fg = 50 + z.mean(axis=1) * 10
-                fg_scaled = np.clip(fg, 0, 100)
-                score = round(fg_scaled[-1], 1)
-
-                # Color
-                color = "#ffcccc" if score < 25 else "#fff2cc" if score < 50 else "#d9f2d9" if score < 75 else "#b6d7a8"
-
-                fig = go.Figure(go.Indicator(
-                    mode="gauge+number",
-                    value=score,
-                    title={"text": f"<b>{ticker}</b>", 'font': {'size': 16, 'color': color}},
-                    gauge={
-                        'axis': {'range': [0, 100]},
-                        'bar': {'color': "black"},
-                        'steps': [
-                            {'range': [0, 25], 'color': '#ffcccc'},
-                            {'range': [25, 50], 'color': '#fff2cc'},
-                            {'range': [50, 75], 'color': '#d9f2d9'},
-                            {'range': [75, 100], 'color': '#b6d7a8'},
-                        ]
-                    }
-                ))
-                fig.update_layout(width=300, height=250, margin=dict(t=20, b=0, l=0, r=0))
-                st.plotly_chart(fig)
-
-            except Exception as e:
-                st.warning(f"⚠️ Error processing {ticker}: {e}")
+        except Exception as e:
+            with cols[i % 4]:
+                st.warning(f"⚠️ Error processing {ticker}")
