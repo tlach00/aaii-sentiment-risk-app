@@ -308,6 +308,7 @@ with tab8:
     except Exception:
         st.caption("Last updated: Unavailable")
 # ------------------------- TAB 9: CNN Fear & Greed Replication + ML Strategy -------------------------
+# ------------------------- TAB 9: Replica F&G Index + ML Strategy -------------------------
 with tab9:
     import yfinance as yf
     import pandas as pd
@@ -318,7 +319,14 @@ with tab9:
     from sklearn.preprocessing import StandardScaler
     import plotly.express as px
 
-    st.markdown("## 🧐 CNN-Style Fear & Greed Replication + ML Strategy")
+    st.markdown("## 🧠 Replica CNN Fear & Greed Index + ML Strategy")
+
+    # Load official CNN index
+    df_official = pd.read_csv("fear-greed-2011-2023.csv", skiprows=2, header=None)
+    df_official.columns = ["Date", "official_score"]
+    df_official["Date"] = pd.to_datetime(df_official["Date"])
+    df_official.set_index("Date", inplace=True)
+    df_official.sort_index(inplace=True)
 
     # Date range up to today
     end = datetime.datetime.today()
@@ -350,56 +358,39 @@ with tab9:
         safe_haven = (data["SPY"] / data["TLT"]).pct_change().rolling(20).mean() * 100
         junk_demand = (data["HYG"] / data["LQD"]).pct_change().rolling(20).mean() * 100
 
-        # CNN Z-score scaling
-        def normalize(series):
-            z = (series - series.mean()) / series.std()
-            return np.clip(50 + z * 25, 0, 100)
+        # Build replica
+        replica_raw = pd.DataFrame({
+            "momentum": momentum,
+            "strength": strength,
+            "breadth": breadth,
+            "putcall": put_call,
+            "volatility": volatility,
+            "safehaven": safe_haven,
+            "junk": junk_demand,
+        }, index=data.index).dropna()
 
-        fng_df = pd.DataFrame({
-            "momentum": normalize(momentum),
-            "strength": normalize(strength),
-            "breadth": normalize(breadth),
-            "putcall": normalize(put_call),
-            "volatility": normalize(volatility),
-            "safehaven": normalize(safe_haven),
-            "junk": normalize(junk_demand),
-        }, index=data.index)
+        replica_z = (replica_raw - replica_raw.mean()) / replica_raw.std()
+        replica_index = replica_z.mean(axis=1)
 
-        fng_df["FNG_Index"] = fng_df.mean(axis=1)
-        fng_df["FNG_Smooth"] = fng_df["FNG_Index"].rolling(window=100).mean()
-        fng_df.dropna(inplace=True)
-
-        # Gauge
-        latest_score = int(fng_df["FNG_Index"].iloc[-1])
-        latest_date = fng_df.index[-1].strftime("%B %d, %Y")
-
-        gauge_fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=latest_score,
-            title={'text': "Fear & Greed Index"},
-            gauge={
-                'axis': {'range': [0, 100]},
-                'bar': {'color': "black"},
-                'steps': [
-                    {'range': [0, 25], 'color': '#ffcccc'},
-                    {'range': [25, 50], 'color': '#fff2cc'},
-                    {'range': [50, 75], 'color': '#d9f2d9'},
-                    {'range': [75, 100], 'color': '#b6d7a8'},
-                ]
-            }
-        ))
-        st.plotly_chart(gauge_fig, use_container_width=True)
+        # Auto-scale
+        common_index = df_official.index.intersection(replica_index.index)
+        scaling = df_official.loc[common_index]["official_score"].std() / replica_index.loc[common_index].std()
+        replica_scaled = 50 + replica_index * scaling
+        replica_scaled = np.clip(replica_scaled, 0, 100)
 
         # Historical chart
-        st.markdown("### 📉 Historical Fear & Greed Index (Since 2007)")
+        st.markdown("### 📉 Historical Replica Fear & Greed Index")
+        replica_df = pd.DataFrame({"Replica_FG": replica_scaled})
+        replica_df["FNG_Smooth"] = replica_df["Replica_FG"].rolling(100).mean()
+
         fig_fng = go.Figure()
-        fig_fng.add_trace(go.Scatter(x=fng_df.index, y=fng_df["FNG_Index"], name="F&G Index", mode="lines"))
-        fig_fng.add_trace(go.Scatter(x=fng_df.index, y=fng_df["FNG_Smooth"], name="100-day MA", mode="lines", line=dict(color="red")))
+        fig_fng.add_trace(go.Scatter(x=replica_df.index, y=replica_df["Replica_FG"], name="F&G Index", mode="lines"))
+        fig_fng.add_trace(go.Scatter(x=replica_df.index, y=replica_df["FNG_Smooth"], name="100-day MA", mode="lines", line=dict(color="red")))
         fig_fng.update_layout(
             shapes=[
-                dict(type="rect", xref="x", yref="y", x0=fng_df.index[0], x1=fng_df.index[-1], y0=0, y1=25,
+                dict(type="rect", xref="x", yref="y", x0=replica_df.index[0], x1=replica_df.index[-1], y0=0, y1=25,
                      fillcolor="#ffcccc", opacity=0.2, line_width=0),
-                dict(type="rect", xref="x", yref="y", x0=fng_df.index[0], x1=fng_df.index[-1], y0=75, y1=100,
+                dict(type="rect", xref="x", yref="y", x0=replica_df.index[0], x1=replica_df.index[-1], y0=75, y1=100,
                      fillcolor="#d9f2d9", opacity=0.2, line_width=0),
             ],
             yaxis_title="Index Value (0–100)",
@@ -412,7 +403,7 @@ with tab9:
         # ML Strategy below chart
         st.markdown("### 📈 ML Strategy vs Buy & Hold")
 
-        ml_df = fng_df.copy()
+        ml_df = replica_df.copy()
         ml_df["target"] = data["SPY"].pct_change().shift(-1)
         ml_df.dropna(inplace=True)
         ml_df["label"] = np.where(ml_df["target"] > 0.001, 1, np.where(ml_df["target"] < -0.001, -1, 0))
@@ -470,3 +461,4 @@ with tab9:
     except Exception as e:
         st.error("❌ Error fetching or processing data.")
         st.exception(e)
+
