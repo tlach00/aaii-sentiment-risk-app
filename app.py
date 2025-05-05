@@ -472,19 +472,21 @@ with tab9:
         st.error("❌ Error fetching or processing data.")
         st.exception(e)
 
-# ------------------------- TAB 10: Stock-Specific Fear & Greed Mini-Gauge Dashboard -------------------------
+# ------------------------- TAB 10: Stock-Specific Fear & Greed Index -------------------------
 with tab10:
     import yfinance as yf
     import pandas as pd
     import numpy as np
     import plotly.graph_objects as go
     import streamlit as st
+    from datetime import datetime
 
     st.markdown("## 🧬 Stock-Specific Fear & Greed Index Dashboard")
 
-    with st.expander("ℹ️ How is this index calculated?", expanded=True):
+    with st.expander("❓ How is this index calculated?"):
         st.markdown("""
         The **Stock-Specific Fear & Greed Index** combines 6 key components:
+
         - **Volatility**: Stock’s 20-day and 50-day historical volatility.
         - **Safe Haven Demand**: SPY/TLT ratio.
         - **Junk Bond Demand**: HYG vs LQD yield spread.
@@ -497,58 +499,68 @@ with tab10:
 
     st.markdown("### 🏆 Fear & Greed Today — Top S&P 500 Companies")
 
-    top8 = ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "TSLA", "META", "UNH"]
-
+    top_stocks = ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "META", "TSLA", "UNH"]
     col1, col2 = st.columns(2)
 
-    def calculate_fg_index(ticker):
-        try:
-            df = yf.download([ticker, "SPY", "TLT", "HYG", "LQD"], period="6mo", interval="1d")['Close'].dropna()
-            df.columns = df.columns.get_level_values(0)
-            df = df.dropna()
+    for i, ticker in enumerate(top_stocks):
+        col = col1 if i % 2 == 0 else col2
+        with col:
+            try:
+                stock = yf.Ticker(ticker)
+                data = stock.history(period="6mo")
+                if data.empty:
+                    raise ValueError("No price data")
 
-            momentum = (df[ticker] - df[ticker].rolling(125).mean()) / df[ticker].rolling(125).mean()
-            volatility_20 = df[ticker].pct_change().rolling(20).std()
-            volatility_50 = df[ticker].pct_change().rolling(50).std()
-            volatility = volatility_20 / volatility_50
-            safe_haven = df["SPY"] / df["TLT"]
-            junk_demand = df["HYG"] / df["LQD"]
-            sentiment = df[ticker].pct_change().rolling(10).std()  # placeholder for options skew
-            breadth = df[ticker].pct_change().rolling(20).mean()
+                # Indicators
+                vol_20 = data['Close'].pct_change().rolling(20).std()
+                vol_50 = data['Close'].pct_change().rolling(50).std()
+                momentum = 100 * (data['Close'] - data['Close'].rolling(125).mean()) / data['Close'].rolling(125).mean()
+                rsi_20 = data['Close'].pct_change().rolling(20).mean()
 
-            raw_df = pd.DataFrame({
-                "momentum": momentum,
-                "volatility": volatility,
-                "safe_haven": safe_haven,
-                "junk_demand": junk_demand,
-                "sentiment": sentiment,
-                "breadth": breadth
-            }).dropna()
+                # Safe Haven Demand
+                spy = yf.download("SPY", period="6mo")['Close']
+                tlt = yf.download("TLT", period="6mo")['Close']
+                safe_haven = (spy / tlt).pct_change().rolling(20).mean()
 
-            z_scores = (raw_df - raw_df.mean()) / raw_df.std()
-            fng_scaled = np.clip(50 + z_scores.mean(axis=1) * 25, 0, 100)
-            return round(fng_scaled[-1], 1)
-        except:
-            return None
+                # Junk Bond Demand
+                hyg = yf.download("HYG", period="6mo")['Close']
+                lqd = yf.download("LQD", period="6mo")['Close']
+                junk = (hyg / lqd).pct_change().rolling(20).mean()
 
-    def get_color(score):
-        if score < 25:
-            return "#ffcccc"
-        elif score < 50:
-            return "#fff2cc"
-        elif score < 75:
-            return "#d9f2d9"
-        else:
-            return "#b6d7a8"
+                # Options Sentiment fallback
+                try:
+                    calls = stock.option_chain().calls.openInterest.sum()
+                    puts = stock.option_chain().puts.openInterest.sum()
+                    sentiment = 100 * (puts - calls) / (puts + calls)
+                except:
+                    sentiment = np.nan
 
-    for i, ticker in enumerate(top8):
-        score = calculate_fg_index(ticker)
-        target_col = col1 if i % 2 == 0 else col2
-        with target_col:
-            if score is not None:
+                df = pd.DataFrame({
+                    "vol20": vol_20,
+                    "vol50": vol_50,
+                    "momentum": momentum,
+                    "breadth": rsi_20,
+                    "safehaven": safe_haven,
+                    "junk": junk,
+                    "sentiment": sentiment
+                }).dropna()
+
+                if df.empty:
+                    raise ValueError("Not enough indicator data")
+
+                # Z-score normalization
+                z = (df - df.mean()) / df.std()
+                fg = 50 + z.mean(axis=1) * 10
+                fg_scaled = np.clip(fg, 0, 100)
+                score = round(fg_scaled[-1], 1)
+
+                # Color
+                color = "#ffcccc" if score < 25 else "#fff2cc" if score < 50 else "#d9f2d9" if score < 75 else "#b6d7a8"
+
                 fig = go.Figure(go.Indicator(
                     mode="gauge+number",
                     value=score,
+                    title={"text": f"<b>{ticker}</b>", 'font': {'size': 16, 'color': color}},
                     gauge={
                         'axis': {'range': [0, 100]},
                         'bar': {'color': "black"},
@@ -556,14 +568,12 @@ with tab10:
                             {'range': [0, 25], 'color': '#ffcccc'},
                             {'range': [25, 50], 'color': '#fff2cc'},
                             {'range': [50, 75], 'color': '#d9f2d9'},
-                            {'range': [75, 100], 'color': '#b6d7a8'}
+                            {'range': [75, 100], 'color': '#b6d7a8'},
                         ]
-                    },
-                    number={'font': {'size': 32}},
-                    domain={'x': [0, 1], 'y': [0, 1]}
+                    }
                 ))
-                fig.update_layout(margin=dict(t=0, b=0, l=0, r=0), width=350, height=250)
-                st.plotly_chart(fig, use_container_width=False)
-                st.markdown(f"<div style='text-align:center; font-weight:bold; color:{get_color(score)}'>{ticker}</div>", unsafe_allow_html=True)
-            else:
-                st.warning(f"⚠️ Error processing {ticker}")
+                fig.update_layout(width=300, height=250, margin=dict(t=20, b=0, l=0, r=0))
+                st.plotly_chart(fig)
+
+            except Exception as e:
+                st.warning(f"⚠️ Error processing {ticker}: {e}")
