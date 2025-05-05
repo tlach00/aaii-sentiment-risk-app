@@ -318,7 +318,7 @@ with tab9:
     from sklearn.preprocessing import StandardScaler
     import plotly.express as px
 
-    st.markdown("## 🧠 CNN-Style Fear & Greed Replication + ML Strategy")
+    st.markdown("## 🧐 CNN-Style Fear & Greed Replication + ML Strategy")
 
     # Date range up to today
     end = datetime.datetime.today()
@@ -366,6 +366,7 @@ with tab9:
         }, index=data.index)
 
         fng_df["FNG_Index"] = fng_df.mean(axis=1)
+        fng_df["FNG_Smooth"] = fng_df["FNG_Index"].rolling(window=100).mean()
         fng_df.dropna(inplace=True)
 
         # Gauge
@@ -393,6 +394,7 @@ with tab9:
         st.markdown("### 📉 Historical Fear & Greed Index (Since 2007)")
         fig_fng = go.Figure()
         fig_fng.add_trace(go.Scatter(x=fng_df.index, y=fng_df["FNG_Index"], name="F&G Index", mode="lines"))
+        fig_fng.add_trace(go.Scatter(x=fng_df.index, y=fng_df["FNG_Smooth"], name="100-day MA", mode="lines", line=dict(color="red")))
         fig_fng.update_layout(
             shapes=[
                 dict(type="rect", xref="x", yref="y", x0=fng_df.index[0], x1=fng_df.index[-1], y0=0, y1=25,
