@@ -318,7 +318,7 @@ with tab9:
     from sklearn.preprocessing import StandardScaler
     import plotly.express as px
 
-    st.markdown("## 🧐 CNN-Style Fear & Greed Replication + ML Strategy")
+    st.markdown("## 🧠 CNN-Style Fear & Greed Replication + ML Strategy")
 
     # Date range up to today
     end = datetime.datetime.today()
@@ -353,7 +353,7 @@ with tab9:
         # CNN Z-score scaling
         def normalize(series):
             z = (series - series.mean()) / series.std()
-            return np.clip(50 + z * 28, 0, 100)
+            return np.clip(50 + z * 25, 0, 100)
 
         fng_df = pd.DataFrame({
             "momentum": normalize(momentum),
@@ -366,23 +366,7 @@ with tab9:
         }, index=data.index)
 
         fng_df["FNG_Index"] = fng_df.mean(axis=1)
-        fng_df["FNG_Smooth"] = fng_df["FNG_Index"].rolling(window=100).mean()
         fng_df.dropna(inplace=True)
-
-        # Explanation
-        st.markdown("""
-        This index replicates the CNN Fear & Greed Index using seven key indicators:
-
-        - **Momentum**: S&P 500 vs 125-day moving average
-        - **Strength**: % of stocks above 125-day MA
-        - **Breadth**: 20-day average SPY returns
-        - **Put/Call**: VIX proxy z-score
-        - **Volatility**: VIX vs 50-day MA
-        - **Safe Haven Demand**: SPY vs TLT
-        - **Junk Bond Demand**: HYG vs LQD
-
-        Each is normalized using a z-score scaled to a 0–100 index, then averaged.
-        """)
 
         # Gauge
         latest_score = int(fng_df["FNG_Index"].iloc[-1])
@@ -409,7 +393,6 @@ with tab9:
         st.markdown("### 📉 Historical Fear & Greed Index (Since 2007)")
         fig_fng = go.Figure()
         fig_fng.add_trace(go.Scatter(x=fng_df.index, y=fng_df["FNG_Index"], name="F&G Index", mode="lines"))
-        fig_fng.add_trace(go.Scatter(x=fng_df.index, y=fng_df["FNG_Smooth"], name="100-day MA", mode="lines", line=dict(color="red")))
         fig_fng.update_layout(
             shapes=[
                 dict(type="rect", xref="x", yref="y", x0=fng_df.index[0], x1=fng_df.index[-1], y0=0, y1=25,
@@ -474,31 +457,6 @@ with tab9:
                            labels={"value": "Portfolio Value", "variable": "Strategy"},
                            title="ML Strategy vs Buy & Hold")
         fig_perf.update_layout(height=400)
-
-        # Optional F&G index background
-        show_fng = st.checkbox("📊 Overlay historical Fear & Greed Index", value=False)
-
-        if show_fng:
-            fng_subset = fng_df.loc[dates_test]
-            fig_perf.add_trace(go.Scatter(
-                x=fng_subset.index,
-                y=fng_subset["FNG_Index"],
-                yaxis="y2",
-                name="F&G Index",
-                mode="lines",
-                line=dict(color="lightgray", width=2, dash="dot"),
-                opacity=0.5
-            ))
-            fig_perf.update_layout(
-                yaxis2=dict(
-                    overlaying="y",
-                    side="right",
-                    title="Fear & Greed",
-                    showgrid=False,
-                    range=[0, 100]
-                )
-            )
-
         st.plotly_chart(fig_perf, use_container_width=True)
 
         # Trade list
