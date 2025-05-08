@@ -541,8 +541,6 @@ with tab10:
         Each feature is standardized (z-score), averaged, and scaled from 0 to 100.
         """)
 
-    st.markdown("### 🏆 Fear & Greed Today — Top S&P 500 Companies")
-
     def compute_fg_score(ticker):
         try:
             end = datetime.datetime.today()
@@ -588,17 +586,26 @@ with tab10:
         st.plotly_chart(fig, use_container_width=False, key=key)
         st.markdown(f"<div style='text-align:center; color:{color}; font-weight:bold;'>{ticker}</div>", unsafe_allow_html=True)
 
-    top_tickers = ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "META", "TSLA", "UNH"]
+    @st.cache_data
+    def load_top_gauges():
+        results = {}
+        for ticker in ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "META", "TSLA", "UNH"]:
+            fng_today = compute_fg_score(ticker)
+            if fng_today is not None and not fng_today.empty:
+                score = round(fng_today[-1], 1)
+                results[ticker] = score
+        return results
+
+    st.markdown("### 🏆 Fear & Greed Today — Top S&P 500 Companies")
     cols = st.columns(4)
-    for i, ticker in enumerate(top_tickers):
-        fng_today = compute_fg_score(ticker)
-        if fng_today is not None and not fng_today.empty:
-            score = round(fng_today[-1], 1)
-            with cols[i % 4]:
-                plot_fng_gauge(ticker, score, key=f"gauge_{ticker}")
-        else:
-            with cols[i % 4]:
-                st.warning(f"⚠️ Error processing {ticker}")
+    top_scores = load_top_gauges()
+    for i, (ticker, score) in enumerate(top_scores.items()):
+        with cols[i % 4]:
+            plot_fng_gauge(ticker, score, key=f"gauge_{ticker}")
+
+    # Optional: manual refresh
+    # if st.button("🔄 Refresh Top 10 Gauges"):
+    #     st.cache_data.clear()
 
     st.markdown("---")
     st.markdown("### 🔍 Explore Any S&P 500 Stock")
