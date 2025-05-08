@@ -58,28 +58,22 @@ with tab1:
     st.dataframe(raw_df)
 # ---------------------------- TAB 2 ----------------------------------
 with tab2:
-    import requests
-    from io import StringIO
-    
-    st.markdown("### 🧪 Latest AAII Sentiment Survey")
-    
-    try:
-        response = requests.get("https://www.aaii.com/files/sentimentsurvey/sentiment.csv")
-        if response.status_code == 200:
-            aaii_df = pd.read_csv(StringIO(response.text))
-            aaii_df['Date'] = pd.to_datetime(aaii_df['Date'])
-            aaii_df.sort_values("Date", inplace=True)
-    
-            latest = aaii_df.iloc[-1]
-            st.write(f"**Date:** {latest['Date'].date()}")
-            st.write(f"🐂 **Bullish**: {latest['Bullish']}%")
-            st.write(f"≡ **Neutral**: {latest['Neutral']}%")
-            st.write(f"🐻 **Bearish**: {latest['Bearish']}%")
-        else:
-            st.warning("Could not fetch latest AAII data.")
-    except Exception as e:
-        st.error(f"Error loading AAII data: {e}")
-    st.markdown("## :chart_with_upwards_trend: Interactive Dashboard")
+    st.markdown("## :chart_with_upwards_trend: AAII Sentiment Survey")
+    st.markdown("""
+### 🧠 About the AAII Sentiment Survey
+
+The **AAII Investor Sentiment Survey** is a weekly gauge of market expectations among individual investors.  
+It asks a single question:  
+**"Do you feel the direction of the stock market over the next six months will be up (bullish), no change (neutral), or down (bearish)?"**
+
+- **Frequency**: Weekly (runs from Thursday to Wednesday)
+- **Participants**: AAII members (mostly individual investors)
+- **Relevance**: Often used as a **contrarian indicator** — high bullishness can signal potential tops, and high bearishness can signal bottoms.
+- **Long-term averages** (since 1987):  
+  - 🐂 **Bullish**: ~37.5%  
+  - ≡ **Neutral**: ~31.5%  
+  - 🐻 **Bearish**: ~31.0%  
+""")
     start_date, end_date = st.slider(
         "Select a date range:",
         min_value=min_date,
