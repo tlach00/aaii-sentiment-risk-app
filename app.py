@@ -58,22 +58,95 @@ with tab1:
     st.dataframe(raw_df)
 # ---------------------------- TAB 2 ----------------------------------
 with tab2:
-    st.markdown("## :chart_with_upwards_trend: AAII Sentiment Survey")
+    st.markdown("## :chart_with_upwards_trend: AAII Investor sentiment survey")
+
+    # AAII summary block
     st.markdown("""
-### 🧠 About the AAII Sentiment Survey
+    ### 🧠 About the AAII Sentiment Survey
+    The **AAII Investor Sentiment Survey** is a weekly gauge of market expectations among individual investors.  
+    It asks a single question:  
+    **"Do you feel the direction of the stock market over the next six months will be up (bullish), no change (neutral), or down (bearish)?"**
 
-The **AAII Investor Sentiment Survey** is a weekly gauge of market expectations among individual investors.  
-It asks a single question:  
-**"Do you feel the direction of the stock market over the next six months will be up (bullish), no change (neutral), or down (bearish)?"**
+    - **Frequency**: Weekly (runs from Thursday to Wednesday)
+    - **Participants**: AAII members (mostly individual investors)
+    - **Relevance**: Often used as a **contrarian indicator** — high bullishness can signal potential tops, and high bearishness can signal bottoms.
+    - **Long-term averages** (since 1987):  
+      - 🐂 **Bullish**: ~37.5%  
+      - ≡ **Neutral**: ~31.5%  
+      - 🐻 **Bearish**: ~31.0%  
+    """)
 
-- **Frequency**: Weekly (runs from Thursday to Wednesday)
-- **Participants**: AAII members (mostly individual investors)
-- **Relevance**: Often used as a **contrarian indicator** — high bullishness can signal potential tops, and high bearishness can signal bottoms.
-- **Long-term averages** (since 1987):  
-  - 🐂 **Bullish**: ~37.5%  
-  - ≡ **Neutral**: ~31.5%  
-  - 🐻 **Bearish**: ~31.0%  
-""")
+    # === AAII Investor sentiment Index  ===
+    import plotly.graph_objects as go
+    st.markdown("### 🔷 AAII Investor sentiment Inde")
+    st.write("This indicator dynamically estimates current market sentiment based on AAII bullish/bearish sentiment and price momentum.")
+    st.markdown("*The score is the average of two normalized components: the Bull-Bear sentiment spread and the 4-week return of the S&P 500.*")
+
+    df_fg = clean_df.copy()
+    df_fg["BullBearSpread"] = df_fg["Bullish"] - df_fg["Bearish"]
+    df_fg["Momentum"] = df_fg["SP500_Close"].pct_change(4)
+
+    bb_scaled = (df_fg["BullBearSpread"] - df_fg["BullBearSpread"].min()) / (df_fg["BullBearSpread"].max() - df_fg["BullBearSpread"].min())
+    mo_scaled = (df_fg["Momentum"] - df_fg["Momentum"].min()) / (df_fg["Momentum"].max() - df_fg["Momentum"].min())
+    df_fg["FG_Score"] = ((bb_scaled + mo_scaled) / 2 * 100).clip(0, 100)
+    df_fg.dropna(inplace=True)
+
+    current_score = int(df_fg["FG_Score"].iloc[-1])
+
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=current_score,
+        title={'text': "Fear & Greed Index"},
+        gauge={
+            'axis': {'range': [0, 100]},
+            'bar': {'color': "black"},
+            'steps': [
+                {'range': [0, 25], 'color': '#ffe6e6'},
+                {'range': [25, 50], 'color': '#fff5cc'},
+                {'range': [50, 75], 'color': '#e6ffe6'},
+                {'range': [75, 100], 'color': '#ccffcc'}
+            ]
+        }
+    ))
+    st.plotly_chart(fig, use_container_width=True)
+
+    def get_sentiment_label(score):
+        if score < 25:
+            return "Extreme Fear"
+        elif score < 50:
+            return "Fear"
+        elif score < 75:
+            return "Greed"
+        else:
+            return "Extreme Greed"
+
+    sentiment_label = get_sentiment_label(current_score)
+    label_descriptions = {
+        "Extreme Fear": "🔴 **Extreme Fear** – Investors are very worried.",
+        "Fear": "🟠 **Fear** – Investors are cautious.",
+        "Neutral": "🟡 **Neutral** – Market is balanced.",
+        "Greed": "🟢 **Greed** – Investors are optimistic.",
+        "Extreme Greed": "🟣 **Extreme Greed** – Investors are euphoric."
+    }
+    description = label_descriptions.get(sentiment_label, "")
+    st.markdown(f"<h2 style='text-align: center;'>{description}</h2>", unsafe_allow_html=True)
+
+    st.subheader("🕰️ Historical Sentiment Snapshots")
+    dates = {
+        "Previous Close": -1,
+        "1 Week Ago": -5,
+        "1 Month Ago": -21,
+        "1 Year Ago": -252
+    }
+    cols = st.columns(len(dates))
+    for i, (label, idx) in enumerate(dates.items()):
+        val = int(df_fg["FG_Score"].iloc[idx])
+        cols[i].metric(label, get_sentiment_label(val), val)
+
+    try:
+        st.caption(f"Last updated {df_fg['Date'].iloc[-1].strftime('%B %d at %I:%M %p')} ET")
+    except Exception:
+        st.caption("Last updated: Unavailable")
     start_date, end_date = st.slider(
         "Select a date range:",
         min_value=min_date,
