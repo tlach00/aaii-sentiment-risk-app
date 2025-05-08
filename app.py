@@ -622,10 +622,8 @@ with tab10:
 
             # Download and align price data
             price_data = yf.download(selected, start=date_range[0], end=date_range[1])["Close"]
-            merged = pd.DataFrame({
-                "Price": price_data,
-                "FNG": fng_full
-            }).loc[str(date_range[0]):str(date_range[1])].dropna()
+            merged = pd.concat([price_data.rename("Price"), fng_full.rename("FNG")], axis=1, join="inner")
+            merged = merged.loc[str(date_range[0]):str(date_range[1])].dropna()
 
             fig_combined = go.Figure()
 
