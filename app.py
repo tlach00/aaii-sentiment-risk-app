@@ -387,7 +387,7 @@ with tab9:
         fng_df["FNG_Index"] = fng_df.mean(axis=1)
         fng_df["FNG_Smooth"] = fng_df["FNG_Index"].rolling(window=100).mean()
         fng_df.dropna(inplace=True)
-        with st.expander("🧠 How This CNN-Style Fear & Greed Index Works"):
+with st.expander("🧠 How This CNN-Style Fear & Greed Index Works"):
     st.markdown("""
     The official **CNN Fear & Greed Index** measures market sentiment using **7 equally weighted indicators**, each scaled from 0 to 100 and averaged:
 
