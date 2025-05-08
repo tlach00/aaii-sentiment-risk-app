@@ -387,7 +387,32 @@ with tab9:
         fng_df["FNG_Index"] = fng_df.mean(axis=1)
         fng_df["FNG_Smooth"] = fng_df["FNG_Index"].rolling(window=100).mean()
         fng_df.dropna(inplace=True)
+        st.markdown("""
+### 🧠 About the CNN Fear & Greed Index (and Our Replication)
 
+The official **CNN Fear & Greed Index** measures market sentiment using **7 equally weighted indicators**, each scaled from 0 to 100 and averaged:
+
+1. **Stock Price Momentum** – S&P 500 vs. 125-day moving average  
+2. **Stock Price Strength** – 52-week highs vs. lows (NYSE)  
+3. **Stock Price Breadth** – Advancing vs. declining volume  
+4. **Put/Call Options** – Ratio of bearish to bullish bets  
+5. **Market Volatility** – VIX vs. its 50-day average  
+6. **Safe Haven Demand** – Stock vs. Treasury performance  
+7. **Junk Bond Demand** – Risk appetite from junk vs. investment-grade bonds
+
+Our replication mimics this index using **free data from Yahoo Finance**:
+
+- 🟢 **Momentum**: S&P 500 vs. 125-day MA (official method)  
+- 🟢 **Strength**: % of days above MA (proxy for 52W highs)  
+- 🟡 **Breadth**: 20-day SPY returns (proxy for volume flows)  
+- 🟡 **Put/Call**: VIX z-score proxy  
+- 🟢 **Volatility**: VIX vs. 50-day MA (official method)  
+- 🟢 **Safe Haven**: SPY/TLT 20-day return  
+- 🟢 **Junk Demand**: HYG/LQD 20-day return
+
+Each indicator is **z-scored and scaled to 0–100**, then averaged to form the final score.  
+This allows tracking investor sentiment in a transparent, replicable way.
+""")
         # Gauge
         latest_score = int(fng_df["FNG_Index"].iloc[-1])
         latest_date = fng_df.index[-1].strftime("%B %d, %Y")
