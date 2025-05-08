@@ -616,7 +616,7 @@ with tab10:
     selected = st.selectbox("Select a stock:", options=all_tickers)
     date_range = st.date_input("Select date range:", value=(datetime.date(2023, 1, 1), datetime.date.today()))
 
-   if selected:
+if selected:
     fng_full = compute_fg_score(selected)
     if fng_full is not None and not fng_full.empty:
         fng_range = fng_full.loc[str(date_range[0]):str(date_range[1])]
