@@ -78,7 +78,7 @@ with tab2:
 
     # === AAII Investor sentiment Index  ===
     import plotly.graph_objects as go
-    st.markdown("### 🔷 AAII Investor sentiment Inde")
+    st.markdown("### 🔷 AAII Investor sentiment Index")
     st.write("This indicator dynamically estimates current market sentiment based on AAII bullish/bearish sentiment and price momentum.")
     st.markdown("*The score is the average of two normalized components: the Bull-Bear sentiment spread and the 4-week return of the S&P 500.*")
 
