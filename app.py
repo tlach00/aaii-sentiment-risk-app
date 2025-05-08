@@ -675,4 +675,4 @@ if selected:
         st.plotly_chart(fig_combined, use_container_width=True)
 
     else:
-        st.warning("Could not retrieve or compute data for this ticker.") 
+        st.warning("Could not retrieve or compute data for this ticker.")
