@@ -157,10 +157,10 @@ with tab2:
     start_date = pd.to_datetime(start_date)
     end_date = pd.to_datetime(end_date)
     filtered_df = clean_df[(clean_df["Date"] >= start_date) & (clean_df["Date"] <= end_date)]
-    st.markdown("### :newspaper: S&P 500 Weekly Close (Log Scale)")
+    st.markdown("### :newspaper: S&P 500 Weekly Close")
     chart1 = alt.Chart(filtered_df).mark_line(color='black').encode(
         x=alt.X('Date:T', title='Date'),
-        y=alt.Y('SP500_Close:Q', scale=alt.Scale(type='log'), title='Price')
+        y=alt.Y('SP500_Close:Q', title='Price')
     ).properties(height=300)
     st.altair_chart(chart1, use_container_width=True)
     st.markdown("### 🧠 Investor Sentiment (Toggle Lines)")
