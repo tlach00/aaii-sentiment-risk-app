@@ -616,21 +616,63 @@ with tab10:
     selected = st.selectbox("Select a stock:", options=all_tickers)
     date_range = st.date_input("Select date range:", value=(datetime.date(2023, 1, 1), datetime.date.today()))
 
-    if selected:
-        fng_full = compute_fg_score(selected)
-        if fng_full is not None and not fng_full.empty:
-            fng_range = fng_full.loc[str(date_range[0]):str(date_range[1])]
-            st.metric(f"Today's {selected} Fear & Greed Score", f"{round(fng_range[-1],1)}")
+   if selected:
+    fng_full = compute_fg_score(selected)
+    if fng_full is not None and not fng_full.empty:
+        fng_range = fng_full.loc[str(date_range[0]):str(date_range[1])]
+        st.metric(f"Today's {selected} Fear & Greed Score", f"{round(fng_range[-1],1)}")
 
-            st.markdown("#### Historical Fear & Greed Index")
-            fig_fg = px.line(fng_range, title="F&G Index", labels={"value": "F&G Score", "index": "Date"})
-            fig_fg.update_layout(height=300)
-            st.plotly_chart(fig_fg, use_container_width=True, key="line_fg")
+        st.markdown("#### 📈 Stock Price & Fear & Greed Index")
 
-            st.markdown("#### Stock Price History")
-            price_data = yf.download(selected, start=date_range[0], end=date_range[1])["Close"]
-            fig_price = px.line(price_data, title="Price", labels={"value": "Price", "index": "Date"})
-            fig_price.update_layout(height=300)
-            st.plotly_chart(fig_price, use_container_width=True, key="line_price")
-        else:
-            st.warning("Could not retrieve or compute data for this ticker.")
+        # Download and align price data
+        price_data = yf.download(selected, start=date_range[0], end=date_range[1])["Close"]
+        merged = pd.DataFrame({
+            "Price": price_data,
+            "FNG": fng_full
+        }).loc[str(date_range[0]):str(date_range[1])].dropna()
+
+        fig_combined = go.Figure()
+
+        # Add price line (left y-axis)
+        fig_combined.add_trace(go.Scatter(
+            x=merged.index,
+            y=merged["Price"],
+            name="Price",
+            yaxis="y1",
+            line=dict(color="black")
+        ))
+
+        # Add F&G index line (right y-axis)
+        fig_combined.add_trace(go.Scatter(
+            x=merged.index,
+            y=merged["FNG"],
+            name="Fear & Greed Index",
+            yaxis="y2",
+            line=dict(color="green", dash="dot")
+        ))
+
+        fig_combined.update_layout(
+            title=f"{selected}: Price and Fear & Greed Index",
+            xaxis=dict(title="Date"),
+            yaxis=dict(
+                title="Price",
+                titlefont=dict(color="black"),
+                tickfont=dict(color="black")
+            ),
+            yaxis2=dict(
+                title="F&G Index (0–100)",
+                titlefont=dict(color="green"),
+                tickfont=dict(color="green"),
+                overlaying="y",
+                side="right",
+                range=[0, 100]
+            ),
+            legend=dict(x=0.01, y=0.99),
+            height=400,
+            margin=dict(l=40, r=40, t=30, b=30)
+        )
+
+        st.plotly_chart(fig_combined, use_container_width=True)
+
+    else:
+        st.warning("Could not retrieve or compute data for this ticker.") 
