@@ -108,7 +108,7 @@ with tab2:
             ]
         }
     ))
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(go.Figure(fig), use_container_width=True)
 
     def get_sentiment_label(score):
         if score < 25:
