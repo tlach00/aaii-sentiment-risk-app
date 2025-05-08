@@ -36,12 +36,11 @@ def load_clean_data():
     return df.dropna()
 raw_df = load_raw_excel()
 clean_df = load_clean_data()
-tab1, tab2, tab3, tab7, tab8, tab9, tab10 = st.tabs([
+tab1, tab2, tab3, tab7, tab9, tab10 = st.tabs([
     "📁 Raw Excel Viewer",
     "📈 Interactive Dashboard",
     "🧪 Z-Score Strategy Backtest",
     "🧠 Deep Q-Learning Strategy",
-    "📉 Fear & Greed Index",
     "😱 CNN F&G replication", 
     "👻 F&G mini-gauge dashboard"
 ])
@@ -326,78 +325,7 @@ with tab7:
     }
     st.write("Action Distribution (Test Set):")
     st.write(action_counts_test)
-# ---------------------------- TAB 8 ----------------------------------
-with tab8:
-    import plotly.graph_objects as go
-    st.markdown("### 🔷 Fear & Greed Index")
-    st.write("This indicator dynamically estimates current market sentiment based on AAII bullish/bearish sentiment and price momentum.")
-    st.markdown("*The score is the average of two normalized components: the Bull-Bear sentiment spread and the 4-week return of the S&P 500.*")
 
-    df_fg = clean_df.copy()
-    df_fg["BullBearSpread"] = df_fg["Bullish"] - df_fg["Bearish"]
-    df_fg["Momentum"] = df_fg["SP500_Close"].pct_change(4)
-
-    bb_scaled = (df_fg["BullBearSpread"] - df_fg["BullBearSpread"].min()) / (df_fg["BullBearSpread"].max() - df_fg["BullBearSpread"].min())
-    mo_scaled = (df_fg["Momentum"] - df_fg["Momentum"].min()) / (df_fg["Momentum"].max() - df_fg["Momentum"].min())
-    df_fg["FG_Score"] = ((bb_scaled + mo_scaled) / 2 * 100).clip(0, 100)
-    df_fg.dropna(inplace=True)
-
-    current_score = int(df_fg["FG_Score"].iloc[-1])
-
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=current_score,
-        title={'text': "Fear & Greed Index"},
-        gauge={
-            'axis': {'range': [0, 100]},
-            'bar': {'color': "black"},
-            'steps': [
-                {'range': [0, 25], 'color': '#ffe6e6'},
-                {'range': [25, 50], 'color': '#fff5cc'},
-                {'range': [50, 75], 'color': '#e6ffe6'},
-                {'range': [75, 100], 'color': '#ccffcc'}
-            ]
-        }
-    ))
-    st.plotly_chart(fig, use_container_width=True)
-
-    def get_sentiment_label(score):
-        if score < 25:
-            return "Extreme Fear"
-        elif score < 50:
-            return "Fear"
-        elif score < 75:
-            return "Greed"
-        else:
-            return "Extreme Greed"
-
-    sentiment_label = get_sentiment_label(current_score)
-    label_descriptions = {
-        "Extreme Fear": "🔴 **Extreme Fear** – Investors are very worried.",
-        "Fear": "🟠 **Fear** – Investors are cautious.",
-        "Neutral": "🟡 **Neutral** – Market is balanced.",
-        "Greed": "🟢 **Greed** – Investors are optimistic.",
-        "Extreme Greed": "🟣 **Extreme Greed** – Investors are euphoric."
-    }
-    description = label_descriptions.get(sentiment_label, "")
-    st.markdown(f"<h2 style='text-align: center;'>{description}</h2>", unsafe_allow_html=True)
-
-    st.subheader("🕰️ Historical Sentiment Snapshots")
-    dates = {
-        "Previous Close": -1,
-        "1 Week Ago": -5,
-        "1 Month Ago": -21,
-        "1 Year Ago": -252
-    }
-    cols = st.columns(len(dates))
-    for i, (label, idx) in enumerate(dates.items()):
-        val = int(df_fg["FG_Score"].iloc[idx])
-        cols[i].metric(label, get_sentiment_label(val), val)
-
-    try:
-        st.caption(f"Last updated {df_fg['Date'].iloc[-1].strftime('%B %d at %I:%M %p')} ET")
-    except Exception:
-        st.caption("Last updated: Unavailable")
 # ------------------------- TAB 9: CNN Fear & Greed Replication + ML Strategy -------------------------
 with tab9:
     import yfinance as yf
