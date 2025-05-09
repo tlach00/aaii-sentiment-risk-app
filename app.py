@@ -401,9 +401,9 @@ with tab9:
             Our replication mimics this index using **free data from Yahoo Finance**, standardized to a 0–100 scale and averaged.
             """)
 
-        # === Left column: Gauge ===
         col1, col2 = st.columns([1, 1])
 
+        # === Left: Gauge + Today Label ===
         with col1:
             latest_score = int(fng_df["FNG_Index"].iloc[-1])
             gauge_fig = go.Figure(go.Indicator(
@@ -422,6 +422,7 @@ with tab9:
                 }
             ))
             st.plotly_chart(gauge_fig, use_container_width=True)
+            st.markdown(f"<h4 style='text-align: center;'>Today’s Score: <b>{latest_score}</b></h4>", unsafe_allow_html=True)
 
             def get_sentiment_label(score):
                 if score < 25:
@@ -438,7 +439,7 @@ with tab9:
             label = get_sentiment_label(latest_score)
             st.markdown(f"<h3 style='text-align: center;'>{label}</h3>", unsafe_allow_html=True)
 
-        # === Right column: Snapshot Table ===
+        # === Right: Sentiment Snapshot ===
         with col2:
             st.markdown("### 🕰️ Sentiment Snapshots")
 
@@ -455,7 +456,7 @@ with tab9:
                     return "Extreme Greed", "#aaffaa"
 
             snapshots = {
-                "Previous Close": -1,
+                "Previous Close": -2,
                 "1 Week Ago": -5,
                 "1 Month Ago": -21,
                 "1 Year Ago": -252
@@ -478,7 +479,7 @@ with tab9:
                 except:
                     st.markdown(f"<i>Data unavailable for {label}</i>", unsafe_allow_html=True)
 
-        # === Historical Line Chart ===
+        # === Historical Chart ===
         st.markdown("### 📉 Historical Fear & Greed Index (Since 2007)")
         fig_fng = go.Figure()
         fig_fng.add_trace(go.Scatter(x=fng_df.index, y=fng_df["FNG_Index"], name="F&G Index", mode="lines"))
@@ -500,7 +501,6 @@ with tab9:
     except Exception as e:
         st.error("❌ Error fetching or processing data.")
         st.exception(e)
-
 # ---------------- tab 10 ----------------
 with tab10:
     import yfinance as yf
