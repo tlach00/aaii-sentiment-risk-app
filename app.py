@@ -367,7 +367,6 @@ with tab9:
         safe_haven = (data["SPY"] / data["TLT"]).pct_change().rolling(20).mean() * 100
         junk_demand = (data["HYG"] / data["LQD"]).pct_change().rolling(20).mean() * 100
 
-        # Normalize
         def normalize(series):
             z = (series - series.mean()) / series.std()
             return np.clip(50 + z * 25, 0, 100)
@@ -390,7 +389,7 @@ with tab9:
         with st.expander("🧠 How This CNN-Style Fear & Greed Index Works"):
             st.markdown("""
             The official **CNN Fear & Greed Index** measures market sentiment using **7 equally weighted indicators**, each scaled from 0 to 100 and averaged:
-        
+
             1. **Stock Price Momentum** – S&P 500 vs. 125-day moving average  
             2. **Stock Price Strength** – 52-week highs vs. lows (NYSE)  
             3. **Stock Price Breadth** – Advancing vs. declining volume  
@@ -398,43 +397,88 @@ with tab9:
             5. **Market Volatility** – VIX vs. its 50-day average  
             6. **Safe Haven Demand** – Stock vs. Treasury performance  
             7. **Junk Bond Demand** – Risk appetite from junk vs. investment-grade bonds
-        
-            Our replication mimics this index using **free data from Yahoo Finance**:
-        
-            - 🟢 **Momentum**: S&P 500 vs. 125-day MA (official method)  
-            - 🟢 **Strength**: % of days above MA (proxy for 52W highs)  
-            - 🟡 **Breadth**: 20-day SPY returns (proxy for volume flows)  
-            - 🟡 **Put/Call**: VIX z-score proxy  
-            - 🟢 **Volatility**: VIX vs. 50-day MA (official method)  
-            - 🟢 **Safe Haven**: SPY/TLT 20-day return  
-            - 🟢 **Junk Demand**: HYG/LQD 20-day return
 
-            Each indicator is **z-scored and scaled to 0–100**, then averaged to form the final score.  
-            This allows tracking investor sentiment in a transparent, replicable way.
+            Our replication mimics this index using **free data from Yahoo Finance**, standardized to a 0–100 scale and averaged.
             """)
 
-        # Gauge
-        latest_score = int(fng_df["FNG_Index"].iloc[-1])
-        latest_date = fng_df.index[-1].strftime("%B %d, %Y")
+        # === Left column: Gauge ===
+        col1, col2 = st.columns([1, 1])
 
-        gauge_fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=latest_score,
-            title={'text': "Fear & Greed Index"},
-            gauge={
-                'axis': {'range': [0, 100]},
-                'bar': {'color': "black"},
-                'steps': [
-                    {'range': [0, 25], 'color': '#ffcccc'},
-                    {'range': [25, 50], 'color': '#fff2cc'},
-                    {'range': [50, 75], 'color': '#d9f2d9'},
-                    {'range': [75, 100], 'color': '#b6d7a8'},
-                ]
+        with col1:
+            latest_score = int(fng_df["FNG_Index"].iloc[-1])
+            gauge_fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=latest_score,
+                title={'text': "Fear & Greed Index"},
+                gauge={
+                    'axis': {'range': [0, 100]},
+                    'bar': {'color': "black"},
+                    'steps': [
+                        {'range': [0, 25], 'color': '#ffcccc'},
+                        {'range': [25, 50], 'color': '#fff2cc'},
+                        {'range': [50, 75], 'color': '#d9f2d9'},
+                        {'range': [75, 100], 'color': '#b6d7a8'},
+                    ]
+                }
+            ))
+            st.plotly_chart(gauge_fig, use_container_width=True)
+
+            def get_sentiment_label(score):
+                if score < 25:
+                    return "🔴 **Extreme Fear**"
+                elif score < 50:
+                    return "🟠 **Fear**"
+                elif score < 60:
+                    return "🟡 **Neutral**"
+                elif score < 75:
+                    return "🟢 **Greed**"
+                else:
+                    return "🟣 **Extreme Greed**"
+
+            label = get_sentiment_label(latest_score)
+            st.markdown(f"<h3 style='text-align: center;'>{label}</h3>", unsafe_allow_html=True)
+
+        # === Right column: Snapshot Table ===
+        with col2:
+            st.markdown("### 🕰️ Sentiment Snapshots")
+
+            def sentiment_tag(score):
+                if score < 25:
+                    return "Extreme Fear", "#ffcccc"
+                elif score < 50:
+                    return "Fear", "#ffe6cc"
+                elif score < 60:
+                    return "Neutral", "#dddddd"
+                elif score < 75:
+                    return "Greed", "#ccffcc"
+                else:
+                    return "Extreme Greed", "#aaffaa"
+
+            snapshots = {
+                "Previous Close": -1,
+                "1 Week Ago": -5,
+                "1 Month Ago": -21,
+                "1 Year Ago": -252
             }
-        ))
-        st.plotly_chart(gauge_fig, use_container_width=True)
 
-        # Historical Chart
+            for label, idx in snapshots.items():
+                try:
+                    score = int(fng_df["FNG_Index"].iloc[idx])
+                    sentiment, color = sentiment_tag(score)
+                    st.markdown(
+                        f"""
+                        <div style='display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed #ccc;'>
+                            <div style='font-size: 14px;'>{label}</div>
+                            <div style='font-weight: bold;'>{sentiment}</div>
+                            <div style='background-color: {color}; border-radius: 50%; padding: 6px 12px; font-weight: bold;'>{score}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+                except:
+                    st.markdown(f"<i>Data unavailable for {label}</i>", unsafe_allow_html=True)
+
+        # === Historical Line Chart ===
         st.markdown("### 📉 Historical Fear & Greed Index (Since 2007)")
         fig_fng = go.Figure()
         fig_fng.add_trace(go.Scatter(x=fng_df.index, y=fng_df["FNG_Index"], name="F&G Index", mode="lines"))
