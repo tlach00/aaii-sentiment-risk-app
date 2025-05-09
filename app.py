@@ -422,7 +422,6 @@ with tab9:
                 }
             ))
             st.plotly_chart(gauge_fig, use_container_width=True)
-            st.markdown(f"<h4 style='text-align: center;'>Today’s Score: <b>{latest_score}</b></h4>", unsafe_allow_html=True)
 
             def get_sentiment_label(score):
                 if score < 25:
