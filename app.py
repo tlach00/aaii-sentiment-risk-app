@@ -20,6 +20,7 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import train_test_split
 
 
+##### calculate the F&G index for multiple tabs ####
 st.title(":bar_chart: AAII Sentiment & S&P 500 Dashboard")
 @st.cache_data
 def load_raw_excel():
@@ -36,11 +37,12 @@ def load_clean_data():
     return df.dropna()
 raw_df = load_raw_excel()
 clean_df = load_clean_data()
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📁 Raw Excel Viewer",
     "📈 AAII Sentiment survey",
     "😱 CNN F&G replication", 
-    "👻 F&G mini-gauge dashboard"
+    "👻 Stock F&G", 
+    "📟 F&G in Risk Management"
 ])
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
@@ -484,3 +486,48 @@ with tab4:
             st.plotly_chart(fig_price, use_container_width=True, key="line_price")
         else:
             st.warning("Could not retrieve or compute data for this ticker.")
+
+# ---------------- tab 5 ----------------
+
+with tab5:
+    st.markdown("## 🔐 Risk Management Overlay using Fear & Greed")
+
+    # Confirm data is loaded
+    if fng_df is None or fng_df.empty:
+        st.error("❌ fng_df is not available.")
+    else:
+        latest = fng_df.dropna().iloc[-1]
+        today = fng_df.index[-1].strftime("%Y-%m-%d")
+
+        # SPY returns
+        spy_returns = data["SPY"].pct_change()
+        var_1d = spy_returns.rolling(252).quantile(0.05).iloc[-1]
+        cvar_1d = spy_returns[spy_returns <= var_1d].mean()
+
+        # Summary table
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.metric("📆 Date", today)
+            st.metric("📉 1-Day VaR (95%)", f"{var_1d:.2%}")
+            st.metric("📉 1-Day CVaR (95%)", f"{cvar_1d:.2%}")
+
+        with col2:
+            st.metric("🧠 F&G Score", f"{latest['FNG_Score']:.1f}")
+            st.metric("📊 Regime", latest["Regime"])
+
+        # Rule-based action
+        regime = latest["Regime"]
+        recommendations = {
+            "Extreme Fear": "🔻 Reduce risk",
+            "Fear": "⚠️ Be cautious",
+            "Neutral": "➖ Hold exposure",
+            "Greed": "🔼 Consider increasing exposure",
+            "Extreme Greed": "🚨 Trim or hedge positions"
+        }
+        st.markdown("### 📋 Suggested Action")
+        st.info(recommendations.get(regime, "No recommendation"))
+
+        # Optional: show data sample
+        with st.expander("📊 Show recent data"):
+            st.dataframe(fng_df.tail(10))
