@@ -487,47 +487,48 @@ with tab4:
         else:
             st.warning("Could not retrieve or compute data for this ticker.")
 
-# ---------------- tab 5 ----------------
-
+## ---------------------------- TAB 5 ----------------------------------
 with tab5:
     st.markdown("## 🔐 Risk Management Overlay using Fear & Greed")
 
-    # Confirm data is loaded
-    if fng_df is None or fng_df.empty:
-        st.error("❌ fng_df is not available.")
-    else:
-        latest = fng_df.dropna().iloc[-1]
-        today = fng_df.index[-1].strftime("%Y-%m-%d")
+    try:
+        # Use the global fng_df from Tab 3
+        latest = fng_df.iloc[-1]
+        last_date = latest.name.date()
+        
+        # Show the date
+        st.subheader("📅 Date")
+        st.write(f"{last_date}")
 
-        # SPY returns
-        spy_returns = data["SPY"].pct_change()
-        var_1d = spy_returns.rolling(252).quantile(0.05).iloc[-1]
-        cvar_1d = spy_returns[spy_returns <= var_1d].mean()
+        # Calculate 1-day return of SPY
+        spy_returns = fng_df["FNG_Index"].pct_change().dropna()
 
-        # Summary table
-        col1, col2 = st.columns(2)
+        # Calculate daily historical VaR and CVaR (95%)
+        var_95 = np.percentile(spy_returns, 5)
+        cvar_95 = spy_returns[spy_returns <= var_95].mean()
 
-        with col1:
-            st.metric("📆 Date", today)
-            st.metric("📉 1-Day VaR (95%)", f"{var_1d:.2%}")
-            st.metric("📉 1-Day CVaR (95%)", f"{cvar_1d:.2%}")
+        # Format as percentage
+        st.metric("📉 1-Day VaR (95%)", f"{var_95 * 100:.2f}%")
+        st.metric("📉 1-Day CVaR (95%)", f"{cvar_95 * 100:.2f}%")
 
-        with col2:
-            st.metric("🧠 F&G Score", f"{latest['FNG_Score']:.1f}")
-            st.metric("📊 Regime", latest["Regime"])
+        # F&G Score and label
+        score = latest["FNG_Index"]
+        st.metric("🧠 F&G Score", f"{score:.1f}")
 
-        # Rule-based action
-        regime = latest["Regime"]
-        recommendations = {
-            "Extreme Fear": "🔻 Reduce risk",
-            "Fear": "⚠️ Be cautious",
-            "Neutral": "➖ Hold exposure",
-            "Greed": "🔼 Consider increasing exposure",
-            "Extreme Greed": "🚨 Trim or hedge positions"
-        }
-        st.markdown("### 📋 Suggested Action")
-        st.info(recommendations.get(regime, "No recommendation"))
+        def get_sentiment_label(score):
+            if score < 25:
+                return "🔴 Extreme Fear"
+            elif score < 50:
+                return "🟠 Fear"
+            elif score < 60:
+                return "🟡 Neutral"
+            elif score < 75:
+                return "🟢 Greed"
+            else:
+                return "🟣 Extreme Greed"
 
-        # Optional: show data sample
-        with st.expander("📊 Show recent data"):
-            st.dataframe(fng_df.tail(10))
+        st.markdown(f"### Current Sentiment Regime: **{get_sentiment_label(score)}**")
+
+    except Exception as e:
+        st.error("⚠️ Could not compute risk overlay due to missing F&G data.")
+        st.exception(e)
