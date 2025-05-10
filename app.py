@@ -501,3 +501,69 @@ with tab5:
     except Exception as e:
         st.error("⚠️ Could not compute risk overlay due to missing F&G data.")
         st.exception(e)
+
+st.markdown("### 📊 VaR & CVaR Overlay with Fear & Greed")
+
+# Ensure FNG_df is available (use your function if needed)
+fng_df = get_fear_and_greed_data()  # Replace if already defined earlier
+
+# Recalculate daily SPY returns
+spy_returns = data["SPY"].pct_change().dropna()
+fng_df = fng_df.loc[spy_returns.index]
+
+# Calculate 1-day VaR and CVaR (95%) using rolling windows (e.g., 100 days)
+window = 100
+confidence = 0.95
+z = np.abs(np.percentile(np.random.randn(100000), (1 - confidence) * 100))
+
+fng_df["VaR"] = -spy_returns.rolling(window).std() * z * 100
+fng_df["CVaR"] = spy_returns.rolling(window).apply(
+    lambda x: -x[x <= np.percentile(x, (1 - confidence) * 100)].mean(), raw=True
+) * 100
+
+# Build plotly chart
+fig_overlay = go.Figure()
+
+# VaR and CVaR traces
+fig_overlay.add_trace(go.Scatter(
+    x=fng_df.index, y=fng_df["VaR"], name="VaR (95%)", yaxis="y1", line=dict(color="blue", dash="solid")
+))
+fig_overlay.add_trace(go.Scatter(
+    x=fng_df.index, y=fng_df["CVaR"], name="CVaR (95%)", yaxis="y1", line=dict(color="red", dash="dot")
+))
+
+# FNG trace
+fig_overlay.add_trace(go.Scatter(
+    x=fng_df.index, y=fng_df["FNG_Index"], name="F&G Index", yaxis="y2", line=dict(color="green")
+))
+
+# Layout with dual axes
+fig_overlay.update_layout(
+    title="1-Day VaR & CVaR vs Fear & Greed Index",
+    xaxis=dict(title="Date"),
+    yaxis=dict(
+        title="VaR / CVaR (%)",
+        titlefont=dict(color="blue"),
+        tickfont=dict(color="blue"),
+        side="left"
+    ),
+    yaxis2=dict(
+        title="F&G Index (0–100)",
+        titlefont=dict(color="green"),
+        tickfont=dict(color="green"),
+        overlaying="y",
+        side="right",
+        range=[0, 100]
+    ),
+    legend=dict(x=0.01, y=0.99),
+    height=500,
+    margin=dict(l=40, r=40, t=40, b=30)
+)
+
+# Add sentiment zones
+fig_overlay.add_shape(type="line", x0=fng_df.index[0], x1=fng_df.index[-1], y0=25, y1=25, yref="y2",
+                      line=dict(color="gray", dash="dash"))
+fig_overlay.add_shape(type="line", x0=fng_df.index[0], x1=fng_df.index[-1], y0=75, y1=75, yref="y2",
+                      line=dict(color="gray", dash="dash"))
+
+st.plotly_chart(fig_overlay, use_container_width=True)
