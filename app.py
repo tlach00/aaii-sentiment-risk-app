@@ -509,7 +509,6 @@ with tab4:
             st.warning("Could not retrieve or compute data for this ticker.")
 
 # ---------------------------- TAB 5 ----------------------------------
-# ---------------------------- TAB 5 ----------------------------------
 with tab5:
     st.markdown("## 🧠 Comparison of VaR & CVaR Methods for the S&P 500 Portfolio")
 
@@ -590,7 +589,7 @@ with tab5:
 
     # === Compute rolling standard and adjusted VaR/CVaR
     full_returns = data["SPY"].pct_change().dropna()
-    fng_series = fng_df["FNG_Index"].loc[full_returns.index].dropna()
+    fng_series = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
     full_returns = full_returns.loc[fng_series.index]
 
     fng_alpha = 0.01 + (100 - fng_series) / 100 * 0.09
@@ -613,20 +612,7 @@ with tab5:
     # === Plot all on one chart
     fig_combined = go.Figure()
     fig_combined.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var * 100, name="Historical VaR (5%)", line=dict(color="orange")))
-    fig_combined.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar * 100, name="Historical CVaR (5%)", line=dict(color="red", dash="dot")))
-    fig_combined.add_trace(go.Scatter(x=adjusted_var.index, y=adjusted_var * 100, name="F&G Adjusted VaR", line=dict(color="purple")))
-    fig_combined.add_trace(go.Scatter(x=adjusted_cvar.index, y=adjusted_cvar * 100, name="F&G Adjusted CVaR", line=dict(color="darkred", dash="dot")))
-
-    fig_combined.update_layout(
-        title="📉 Historical vs F&G Adjusted Rolling VaR & CVaR (1-Year)",
-        xaxis_title="Date",
-        yaxis_title="Loss (%)",
-        height=600,
-        legend=dict(x=0.01, y=0.99),
-        margin=dict(l=40, r=40, t=50, b=30)
-    )
-    st.plotly_chart(fig_combined, use_container_width=True)
-
+    fig_combined.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar * 100, name="Historical CVaR (5%)", line=dict(color="red", dash |oai:code-citation|
 # ---------------------------- TAB 6 ----------------------------------
 with tab6:
     st.markdown("## 💼 Rolling VaR & CVaR for 60/40 SPY–TLT Portfolio")
