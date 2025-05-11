@@ -348,13 +348,12 @@ with tab3:
     st.markdown("### 📊 Distribution of the F&G Index (2007–Today)")
 
     st.markdown("""
-    This histogram shows the distribution of the CNN-style Fear & Greed Index across the full time series.
-    The vertical lines mark the key sentiment thresholds.
+    This histogram shows the **distribution** of the CNN-style Fear & Greed Index over time.
+    Vertical lines mark the sentiment thresholds: **Extreme Fear (25)**, **Neutral (50)**, and **Greed (75)**.
     """)
 
     fig_hist = go.Figure()
 
-    # Histogram
     fig_hist.add_trace(go.Histogram(
         x=fng_df["FNG_Index"],
         nbinsx=50,
@@ -363,7 +362,6 @@ with tab3:
         opacity=0.75
     ))
 
-    # Threshold lines and labels
     thresholds = {
         25: "Extreme Fear",
         50: "Neutral",
@@ -388,11 +386,26 @@ with tab3:
         xaxis_title="F&G Index Value",
         yaxis_title="Frequency",
         bargap=0.05,
-        height=400,
+        height=550,
         margin=dict(l=40, r=40, t=40, b=30)
     )
 
     st.plotly_chart(fig_hist, use_container_width=True)
+
+    # ---------------- Summary Stats ----------------
+    st.markdown("### 📈 Summary Statistics")
+
+    stats = {
+        "Mean": fng_df["FNG_Index"].mean(),
+        "Std. Dev.": fng_df["FNG_Index"].std(),
+        "Min": fng_df["FNG_Index"].min(),
+        "Max": fng_df["FNG_Index"].max(),
+        "Skewness": fng_df["FNG_Index"].skew(),
+        "Kurtosis": fng_df["FNG_Index"].kurtosis()
+    }
+
+    st.dataframe(pd.DataFrame(stats, index=["Value"]).T)
+
 # ---------------- tab 4 ----------------
 with tab4:
     import yfinance as yf
