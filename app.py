@@ -603,6 +603,58 @@ with tab5:
     )
 
     st.plotly_chart(fig_rolling, use_container_width=True)
+    
+    # === F&G-Based Dynamic VaR ===
+    st.markdown("### 🧠 F&G-Based Dynamic VaR (Illustrative Logic)")
+
+    def compute_fng_adjusted_var(returns, fng_scores, base_window=252):
+        adjusted_var = []
+        for r, s in zip(returns.rolling(base_window), fng_scores.rolling(base_window)):
+            if len(r) < base_window or len(s) < base_window:
+                adjusted_var.append(np.nan)
+                continue
+            # Adjust percentile between 1% (high fear) and 10% (extreme greed)
+            adjustment = np.interp(s.iloc[-1], [0, 100], [0.01, 0.10])
+            adjusted_var.append(np.percentile(r, adjustment * 100))
+        return pd.Series(adjusted_var, index=returns.index)
+
+    fng_series = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
+    aligned_returns = full_returns.loc[fng_series.index]
+    aligned_fng = fng_series.loc[aligned_returns.index]
+
+    fng_adjusted_var = compute_fng_adjusted_var(aligned_returns, aligned_fng)
+
+    # Plot
+    fig_fng_var = go.Figure()
+    fig_fng_var.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var,
+                                     name="Rolling VaR (5%)", line=dict(color="orange")))
+    fig_fng_var.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar,
+                                     name="Rolling CVaR (5%)", line=dict(color="red", dash="dot")))
+    fig_fng_var.add_trace(go.Scatter(x=fng_adjusted_var.index, y=fng_adjusted_var,
+                                     name="F&G-Adjusted VaR", line=dict(color="purple", dash="dash")))
+
+    fig_fng_var.update_layout(
+        title="📉 Rolling VaR & CVaR vs F&G-Adjusted VaR (S&P 500)",
+        xaxis_title="Date",
+        yaxis_title="Loss (%)",
+        height=500,
+        legend=dict(x=0.01, y=0.99),
+        margin=dict(l=40, r=40, t=50, b=30)
+    )
+
+    st.plotly_chart(fig_fng_var, use_container_width=True)
+
+    # Summary table
+    st.markdown("#### 📊 Summary of Dynamic F&G Adjustment")
+    summary_table = pd.DataFrame({
+        "Mean F&G": [aligned_fng.mean()],
+        "Std F&G": [aligned_fng.std()],
+        "Mean SPY Return": [aligned_returns.mean()],
+        "Std SPY Return": [aligned_returns.std()],
+        "Mean F&G-Adjusted VaR": [fng_adjusted_var.mean()]
+    }).T.rename(columns={0: "Value"})
+
+    st.dataframe(summary_table.round(3), use_container_width=True, height=250)
 # ---------------------------- TAB 6 ----------------------------------
 with tab6:
     st.markdown("## 💼 Rolling VaR & CVaR for 60/40 SPY–TLT Portfolio")
