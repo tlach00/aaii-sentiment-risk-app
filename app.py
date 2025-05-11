@@ -509,6 +509,7 @@ with tab4:
             st.warning("Could not retrieve or compute data for this ticker.")
 
 # ---------------------------- TAB 5 ----------------------------------
+# ---------------------------- TAB 5 ----------------------------------
 with tab5:
     st.markdown("## 🧠 Comparison of VaR & CVaR Methods for the S&P 500 Portfolio")
 
@@ -539,36 +540,23 @@ with tab5:
     var_mc = np.percentile(sim_returns, alpha * 100)
     cvar_mc = sim_returns[sim_returns <= var_mc].mean()
 
-    # === F&G-Adjusted Rolling VaR & CVaR
-    fng_rescaled_alpha = 0.01 + (100 - fng_df["FNG_Index"]) / 100 * (0.10 - 0.01)
-    spy_returns_full = data["SPY"].pct_change().dropna()
-    aligned_index = fng_df.index.intersection(spy_returns_full.index)
-
-    adjusted_var = pd.Series(index=aligned_index, dtype=float)
-    adjusted_cvar = pd.Series(index=aligned_index, dtype=float)
-    window = 252
-
-    for date in aligned_index[window:]:
-        past_returns = spy_returns_full.loc[:date].iloc[-window:]
-        fg_alpha = fng_rescaled_alpha.loc[date]
-        if len(past_returns) >= window:
-            var = np.percentile(past_returns, fg_alpha * 100)
-            cvar = past_returns[past_returns <= var].mean()
-            adjusted_var[date] = var
-            adjusted_cvar[date] = cvar
-
-    # === Histogram with VaR/CVaR lines
+    # === Histogram plot with vertical lines
     fig = go.Figure()
     fig.add_trace(go.Histogram(x=spy_returns * 100, nbinsx=100, name="SPY Returns", marker_color="lightblue", opacity=0.75))
-    fig.add_trace(go.Scatter(x=[var_hist * 100]*2, y=[0, 100], name="VaR (Historical)", mode="lines", line=dict(color="blue")))
-    fig.add_trace(go.Scatter(x=[var_param * 100]*2, y=[0, 100], name="VaR (Parametric)", mode="lines", line=dict(color="green", dash="dash")))
-    fig.add_trace(go.Scatter(x=[var_mc * 100]*2, y=[0, 100], name="VaR (Monte Carlo)", mode="lines", line=dict(color="orange", dash="dot")))
-    fig.add_trace(go.Scatter(x=[cvar_hist * 100]*2, y=[0, 100], name="CVaR (Historical)", mode="lines", line=dict(color="blue", width=1, dash="dot")))
-    fig.add_trace(go.Scatter(x=[cvar_param * 100]*2, y=[0, 100], name="CVaR (Parametric)", mode="lines", line=dict(color="green", width=1, dash="dot")))
-    fig.add_trace(go.Scatter(x=[cvar_mc * 100]*2, y=[0, 100], name="CVaR (Monte Carlo)", mode="lines", line=dict(color="orange", width=1, dash="dot")))
+
+    fig.add_trace(go.Scatter(x=[var_hist * 100]*2, y=[0, 100], name="VaR (Historical)", line=dict(color="blue")))
+    fig.add_trace(go.Scatter(x=[var_param * 100]*2, y=[0, 100], name="VaR (Parametric)", line=dict(color="green", dash="dash")))
+    fig.add_trace(go.Scatter(x=[var_mc * 100]*2, y=[0, 100], name="VaR (Monte Carlo)", line=dict(color="orange", dash="dot")))
+
+    fig.add_trace(go.Scatter(x=[cvar_hist * 100]*2, y=[0, 100], name="CVaR (Historical)", line=dict(color="blue", width=1, dash="dot")))
+    fig.add_trace(go.Scatter(x=[cvar_param * 100]*2, y=[0, 100], name="CVaR (Parametric)", line=dict(color="green", width=1, dash="dot")))
+    fig.add_trace(go.Scatter(x=[cvar_mc * 100]*2, y=[0, 100], name="CVaR (Monte Carlo)", line=dict(color="orange", width=1, dash="dot")))
+
     fig.update_layout(
         title="Distribution of 1-Day SPY Returns with VaR & CVaR (5%)",
-        xaxis_title="1-Day Return (%)", yaxis_title="Frequency", height=600,
+        xaxis_title="1-Day Return (%)",
+        yaxis_title="Frequency",
+        height=600,
         legend=dict(x=1.02, y=1, bgcolor="rgba(255,255,255,0.5)", bordercolor="black"),
         margin=dict(l=40, r=40, t=50, b=40)
     )
@@ -576,74 +564,68 @@ with tab5:
     col1, col2 = st.columns([4, 1])
     with col1:
         st.plotly_chart(fig, use_container_width=True)
-
     with col2:
         st.markdown("### 📊 VaR & CVaR Table")
         summary_df = pd.DataFrame({
-            "VaR (%)": [var_hist, var_param, var_mc, adjusted_var.dropna().iloc[-1] * 100],
-            "CVaR (%)": [cvar_hist, cvar_param, cvar_mc, adjusted_cvar.dropna().iloc[-1] * 100],
-            "VaR ($)": [-var_hist * investment, -var_param * investment, -var_mc * investment, -adjusted_var.dropna().iloc[-1] * investment],
-            "CVaR ($)": [-cvar_hist * investment, -cvar_param * investment, -cvar_mc * investment, -adjusted_cvar.dropna().iloc[-1] * investment]
-        }, index=["Historical", "Parametric", "Monte Carlo", "F&G Adjusted"])
-        st.dataframe(summary_df.round(2), use_container_width=True, height=400)
+            "VaR (%)": [var_hist * 100, var_param * 100, var_mc * 100],
+            "CVaR (%)": [cvar_hist * 100, cvar_param * 100, cvar_mc * 100],
+            "VaR ($)": [-var_hist * investment, -var_param * investment, -var_mc * investment],
+            "CVaR ($)": [-cvar_hist * investment, -cvar_param * investment, -cvar_mc * investment]
+        }, index=["Historical", "Parametric", "Monte Carlo"])
+        st.dataframe(summary_df.round(2), use_container_width=True, height=350)
 
-    # === Explanation block
-    with st.expander("📘 How the F&G-Adjusted VaR is Calculated"):
-        st.markdown(r"""
-        The **F&G-Adjusted Value at Risk (VaR)** dynamically adjusts the confidence level based on market sentiment.
+    # === F&G Adjusted VAR Explanation
+    st.markdown("### 🧮 What is F&G Adjusted VaR?")
+    st.markdown(r"""
+    In the **F&G-Adjusted VaR**, we dynamically adjust the confidence level α based on the Fear & Greed Index.
 
-        ### Formula:
-        We define a time-varying quantile level $\alpha_t$ using the Fear & Greed index:
+    **Formula for α(t):**  
+    $$ \alpha(t) = 0.01 + \left( \frac{100 - \text{F\&G}(t)}{100} \right) \cdot 0.09 $$
 
-        $$
-        \alpha_t = \frac{100 - \text{FNG}_t}{100} \times (q_\text{max} - q_\text{min}) + q_\text{min}
-        $$
+    - When F&G is high → α(t) is low → less conservative VaR  
+    - When F&G is low (fear) → α(t) is higher → more conservative VaR  
 
-        where:
-        - $\text{FNG}_t$ is the normalized Fear & Greed score at time $t$ (scaled 0–100),
-        - $q_\text{min} = 0.01$ (Extreme Fear → conservative VaR),
-        - $q_\text{max} = 0.10$ (Extreme Greed → more risk-tolerant VaR),
-        - $\alpha_t$ determines the **percentile used to compute VaR**.
+    For each day, the VaR is computed using a rolling window of past 252 daily returns with the adjusted α(t).
+    """)
 
-        ### Interpretation:
-        - When **F&G = 10** → $\alpha = 0.019$ → **2% VaR** (risk-averse).
-        - When **F&G = 90** → $\alpha = 0.091$ → **9% VaR** (risk-tolerant).
+    # === Compute rolling standard and adjusted VaR/CVaR
+    full_returns = data["SPY"].pct_change().dropna()
+    fng_series = fng_df["FNG_Index"].loc[full_returns.index].dropna()
+    full_returns = full_returns.loc[fng_series.index]
 
-        This simulates how a risk manager could adapt exposure based on prevailing sentiment.
-        """)
-
-    # === F&G Adjusted VaR & CVaR Plot
-    fig_fng_var = go.Figure()
-    fig_fng_var.add_trace(go.Scatter(x=adjusted_var.index, y=adjusted_var * 100, name="F&G-Adjusted VaR", line=dict(color="purple")))
-    fig_fng_var.add_trace(go.Scatter(x=adjusted_cvar.index, y=adjusted_cvar * 100, name="F&G-Adjusted CVaR", line=dict(color="darkred", dash="dot")))
-    fig_fng_var.update_layout(
-        title="📉 Rolling F&G-Adjusted VaR & CVaR",
-        xaxis_title="Date", yaxis_title="Loss (%)", height=500,
-        legend=dict(x=0.01, y=0.99),
-        margin=dict(l=40, r=40, t=50, b=30)
-    )
-    st.plotly_chart(fig_fng_var, use_container_width=True)
-
-    # === Rolling Historical VaR & CVaR (classic)
-    st.markdown("### 🔁 Rolling Historical VaR & CVaR (5%) for SPY")
-    full_returns = data["SPY"].pct_change().dropna() * 100
+    fng_alpha = 0.01 + (100 - fng_series) / 100 * 0.09
+    adjusted_var = pd.Series(index=full_returns.index, dtype=float)
+    adjusted_cvar = pd.Series(index=full_returns.index, dtype=float)
     window = 252
+
+    for date in full_returns.index[window:]:
+        past = full_returns.loc[:date].iloc[-window:]
+        alpha_t = fng_alpha.loc[date]
+        var_t = np.percentile(past, alpha_t * 100)
+        cvar_t = past[past <= var_t].mean()
+        adjusted_var.loc[date] = var_t
+        adjusted_cvar.loc[date] = cvar_t
+
+    # Classic rolling historical VaR & CVaR for comparison
     rolling_var = full_returns.rolling(window).quantile(0.05)
     rolling_cvar = full_returns.rolling(window).apply(lambda x: x[x <= x.quantile(0.05)].mean(), raw=False)
 
-    fig_rolling = go.Figure()
-    fig_rolling.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var, name="Rolling VaR (5%)", line=dict(color="orange")))
-    fig_rolling.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar, name="Rolling CVaR (5%)", line=dict(color="red", dash="dot")))
+    # === Plot all on one chart
+    fig_combined = go.Figure()
+    fig_combined.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var * 100, name="Historical VaR (5%)", line=dict(color="orange")))
+    fig_combined.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar * 100, name="Historical CVaR (5%)", line=dict(color="red", dash="dot")))
+    fig_combined.add_trace(go.Scatter(x=adjusted_var.index, y=adjusted_var * 100, name="F&G Adjusted VaR", line=dict(color="purple")))
+    fig_combined.add_trace(go.Scatter(x=adjusted_cvar.index, y=adjusted_cvar * 100, name="F&G Adjusted CVaR", line=dict(color="darkred", dash="dot")))
 
-    fig_rolling.update_layout(
-        title="📉 Rolling 1-Year Historical VaR & CVaR (5%) — SPY Returns",
+    fig_combined.update_layout(
+        title="📉 Historical vs F&G Adjusted Rolling VaR & CVaR (1-Year)",
         xaxis_title="Date",
         yaxis_title="Loss (%)",
-        height=500,
+        height=600,
         legend=dict(x=0.01, y=0.99),
         margin=dict(l=40, r=40, t=50, b=30)
     )
-    st.plotly_chart(fig_rolling, use_container_width=True)
+    st.plotly_chart(fig_combined, use_container_width=True)
 
 # ---------------------------- TAB 6 ----------------------------------
 with tab6:
