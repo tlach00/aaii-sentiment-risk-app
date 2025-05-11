@@ -564,7 +564,7 @@ with tab5:
     ))
     fig_combined.add_trace(go.Scatter(
         x=rolling_cvar.index, y=rolling_cvar * 100,
-        name="Historical CVaR", line=dict(color="#004080", dash="dot")
+        name="Historical CVaR", line=dict(color="#004080")
     ))
 
     # F&G Adjusted
