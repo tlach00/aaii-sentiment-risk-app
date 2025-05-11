@@ -326,21 +326,44 @@ with tab3:
                 st.markdown(f"<i>Data unavailable for {label}</i>", unsafe_allow_html=True)
 
     st.markdown("### 📉 Historical Fear & Greed Index")
+
     fig_fng = go.Figure()
-    fig_fng.add_trace(go.Scatter(x=fng_df.index, y=fng_df["FNG_Index"], name="F&G Index", mode="lines"))
-    fig_fng.add_trace(go.Scatter(x=fng_df.index, y=fng_df["FNG_Smooth"], name="100-day MA", mode="lines", line=dict(color="red")))
+
+    # F&G Index
+    fig_fng.add_trace(go.Scatter(
+        x=fng_df.index, y=fng_df["FNG_Index"],
+        name="F&G Index", mode="lines", yaxis="y1"
+    ))
+
+    # 100-day MA
+    fig_fng.add_trace(go.Scatter(
+        x=fng_df.index, y=fng_df["FNG_Smooth"],
+        name="100-day MA", mode="lines", line=dict(color="red"), yaxis="y1"
+    ))
+
+    # S&P 500 or SPY price
+    spy_price = data["SPY"].reindex(fng_df.index)
+    fig_fng.add_trace(go.Scatter(
+        x=spy_price.index, y=spy_price,
+        name="SPY Price", mode="lines", line=dict(color="gray", dash="dot"), yaxis="y2"
+    ))
+
     fig_fng.update_layout(
+        yaxis=dict(title="F&G Index (0–100)", range=[0, 100]),
+        yaxis2=dict(
+            title="SPY Price", overlaying="y", side="right", showgrid=False
+        ),
+        xaxis=dict(title="Date"),
         shapes=[
             dict(type="rect", xref="x", yref="y", x0=fng_df.index[0], x1=fng_df.index[-1], y0=0, y1=25,
                  fillcolor="#ffcccc", opacity=0.2, line_width=0),
             dict(type="rect", xref="x", yref="y", x0=fng_df.index[0], x1=fng_df.index[-1], y0=75, y1=100,
                  fillcolor="#d9f2d9", opacity=0.2, line_width=0),
         ],
-        yaxis_title="Index Value (0–100)",
-        xaxis_title="Date",
         height=600,
         margin=dict(l=40, r=40, t=30, b=30)
     )
+
     st.plotly_chart(fig_fng, use_container_width=True)
 
     # 📊 Distribution + stats below
