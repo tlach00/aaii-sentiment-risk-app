@@ -78,12 +78,14 @@ def load_fng_data():
 fng_df, data = load_fng_data()
 
 # Tabs
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📁 Raw Excel Viewer",
     "📈 AAII Sentiment survey",
     "😱 CNN F&G replication", 
     "👻 Stock F&G", 
-    "📟 F&G in Risk Management"
+    "📟 F&G in Risk Management",
+    "📊 60/40 SPY–TLT Portfolio Risk"
+
 ])
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
@@ -601,3 +603,49 @@ with tab5:
     )
 
     st.plotly_chart(fig_rolling, use_container_width=True)
+# ---------------------------- TAB 6 ----------------------------------
+with tab6:
+    st.markdown("## 💼 Rolling VaR & CVaR for 60/40 SPY–TLT Portfolio")
+
+    # 60% SPY, 40% TLT portfolio
+    spy_returns = data["SPY"].pct_change()
+    tlt_returns = data["TLT"].pct_change()
+    port_returns = 0.6 * spy_returns + 0.4 * tlt_returns
+    port_returns = port_returns.dropna() * 100
+
+    # Rolling calculations
+    window = 252
+    alpha = 0.05
+    rolling_var = port_returns.rolling(window).quantile(alpha)
+    rolling_cvar = port_returns.rolling(window).apply(
+        lambda x: x[x <= x.quantile(alpha)].mean(), raw=False
+    )
+
+    # Combine into DataFrame
+    rolling_df = pd.DataFrame({
+        "Portfolio Return": port_returns,
+        "Rolling VaR (5%)": rolling_var,
+        "Rolling CVaR (5%)": rolling_cvar
+    })
+
+    # Plot
+    fig_port = go.Figure()
+    fig_port.add_trace(go.Scatter(
+        x=rolling_df.index, y=rolling_df["Rolling VaR (5%)"],
+        name="Rolling VaR (5%)", line=dict(color="orange")
+    ))
+    fig_port.add_trace(go.Scatter(
+        x=rolling_df.index, y=rolling_df["Rolling CVaR (5%)"],
+        name="Rolling CVaR (5%)", line=dict(color="red", dash="dot")
+    ))
+
+    fig_port.update_layout(
+        title="📉 Rolling 1-Year Historical VaR & CVaR (5%) — 60/40 SPY–TLT Portfolio",
+        xaxis_title="Date",
+        yaxis_title="Loss (%)",
+        height=500,
+        legend=dict(x=0.01, y=0.99),
+        margin=dict(l=40, r=40, t=50, b=30)
+    )
+
+    st.plotly_chart(fig_port, use_container_width=True)
