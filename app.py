@@ -536,9 +536,7 @@ with tab5:
     sim_returns = np.random.normal(mu, sigma, 100000)
     var_mc = np.percentile(sim_returns, alpha * 100)
 
-    # === Plot
-    st.markdown("### 📉 1-Day SPY Return Distribution with VaR Thresholds")
-
+    # === Build plot with legend
     fig = go.Figure()
 
     # Histogram
@@ -547,45 +545,67 @@ with tab5:
         nbinsx=100,
         name="SPY Returns",
         marker_color="lightblue",
-        opacity=0.7
+        opacity=0.75
     ))
 
-    # VaR lines
-    fig.add_vline(
-        x=var_hist * 100, line=dict(color="blue"),
-        annotation_text="Historical VaR", annotation_position="top left"
-    )
-    fig.add_vline(
-        x=var_param * 100, line=dict(color="green", dash="dash"),
-        annotation_text="Parametric VaR", annotation_position="top right"
-    )
-    fig.add_vline(
-        x=var_mc * 100, line=dict(color="orange", dash="dot"),
-        annotation_text="Monte Carlo VaR", annotation_position="bottom left"
-    )
+    # Add VaR lines with legend entries
+    fig.add_trace(go.Scatter(
+        x=[var_hist * 100, var_hist * 100],
+        y=[0, 100],
+        mode="lines",
+        name="Historical VaR",
+        line=dict(color="blue", width=2)
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=[var_param * 100, var_param * 100],
+        y=[0, 100],
+        mode="lines",
+        name="Parametric VaR",
+        line=dict(color="green", width=2, dash="dash")
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=[var_mc * 100, var_mc * 100],
+        y=[0, 100],
+        mode="lines",
+        name="Monte Carlo VaR",
+        line=dict(color="orange", width=2, dash="dot")
+    ))
 
     fig.update_layout(
+        title="Distribution of 1-Day SPY Returns with 5% VaR Thresholds",
         xaxis_title="1-Day Return (%)",
         yaxis_title="Frequency",
-        title="Comparison of VaR Methods (95% Confidence)",
-        height=600
+        height=600,
+        legend=dict(
+            orientation="v",
+            x=1.02,
+            y=1,
+            bgcolor="rgba(255,255,255,0.5)",
+            bordercolor="black"
+        ),
+        margin=dict(l=40, r=40, t=50, b=40)
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    # === Layout side by side: plot | stats
+    col1, col2 = st.columns([4, 1])
 
-    # Summary Table
-    st.markdown("### 📊 VaR Results Comparison")
-    summary_df = pd.DataFrame({
-        "VaR (%)": [
-            var_hist * 100,
-            var_param * 100,
-            var_mc * 100
-        ],
-        "Loss ($)": [
-            -var_hist * investment,
-            -var_param * investment,
-            -var_mc * investment
-        ]
-    }, index=["Historical", "Parametric", "Monte Carlo"])
+    with col1:
+        st.plotly_chart(fig, use_container_width=True)
 
-    st.dataframe(summary_df.round(2))
+    with col2:
+        st.markdown("### 📊 VaR Comparison")
+        summary_df = pd.DataFrame({
+            "VaR (%)": [
+                var_hist * 100,
+                var_param * 100,
+                var_mc * 100
+            ],
+            "Loss ($)": [
+                -var_hist * investment,
+                -var_param * investment,
+                -var_mc * investment
+            ]
+        }, index=["Historical", "Parametric", "Monte Carlo"])
+        st.dataframe(summary_df.round(2), use_container_width=True, height=250)
