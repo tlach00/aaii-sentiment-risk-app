@@ -512,34 +512,36 @@ with tab4:
 with tab5:
     st.markdown("## 🧠 Comparison of VaR & CVaR Methods for the S&P 500 Portfolio")
 
+    # ✅ User-defined rolling window via slider
+    window = st.slider("📏 Select rolling window (days)", min_value=100, max_value=600, value=252, step=10)
     investment = 1_000_000
     confidence_level = 0.95
     alpha = 1 - confidence_level
-    lookback_days = 252 * 5
+    lookback_days = window * 5  # 5 years of history
 
     spy_prices = data["SPY"].dropna()
     spy_returns = spy_prices.pct_change().dropna()
     spy_returns = spy_returns[-lookback_days:]
 
-    # === Historical
+    # === Historical VaR & CVaR
     sorted_returns = np.sort(spy_returns.values)
     var_hist = np.percentile(sorted_returns, alpha * 100)
     cvar_hist = sorted_returns[sorted_returns <= var_hist].mean()
 
-    # === Parametric
+    # === Parametric VaR & CVaR (Normality assumption)
     mu = spy_returns.mean()
     sigma = spy_returns.std()
     from scipy.stats import norm
     var_param = norm.ppf(alpha, mu, sigma)
     cvar_param = mu - sigma * norm.pdf(norm.ppf(alpha)) / alpha
 
-    # === Monte Carlo
+    # === Monte Carlo VaR & CVaR
     np.random.seed(42)
     sim_returns = np.random.normal(mu, sigma, 100000)
     var_mc = np.percentile(sim_returns, alpha * 100)
     cvar_mc = sim_returns[sim_returns <= var_mc].mean()
 
-    # === Histogram plot
+    # === Histogram plot with VaR & CVaR lines
     fig = go.Figure()
     fig.add_trace(go.Histogram(x=spy_returns * 100, nbinsx=100, name="SPY Returns", marker_color="lightblue", opacity=0.75))
     fig.add_trace(go.Scatter(x=[var_hist * 100]*2, y=[0, 100], name="VaR (Historical)", line=dict(color="blue")))
@@ -582,16 +584,13 @@ with tab5:
     - When F&G is high → α(t) is low → less conservative VaR  
     - When F&G is low (fear) → α(t) is higher → more conservative VaR  
 
-    For each day, the VaR is computed using a rolling window of past *N* days (default: 252).
+    For each day, the VaR is computed using a rolling window of past *N* daily returns with the adjusted α(t).
     """)
 
-    # === Compute rolling standard and adjusted VaR/CVaR
+    # === Rolling historical & F&G-adjusted VaR/CVaR
     full_returns = data["SPY"].pct_change().dropna()
     fng_series = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
     full_returns = full_returns.loc[fng_series.index]
-
-    # Ruler to select rolling window
-    window = st.slider("Select rolling window length (in days)", min_value=100, max_value=600, value=252, step=10)
 
     fng_alpha = 0.01 + (100 - fng_series) / 100 * 0.09
     adjusted_var = pd.Series(index=full_returns.index, dtype=float)
@@ -608,7 +607,7 @@ with tab5:
     rolling_var = full_returns.rolling(window).quantile(0.05)
     rolling_cvar = full_returns.rolling(window).apply(lambda x: x[x <= x.quantile(0.05)].mean(), raw=False)
 
-    # === Plot all in one graph
+    # === Plot all curves on same chart
     fig_combined = go.Figure()
     fig_combined.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var * 100, name="Historical VaR (5%)", line=dict(color="orange")))
     fig_combined.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar * 100, name="Historical CVaR (5%)", line=dict(color="red", dash="dot")))
@@ -616,7 +615,7 @@ with tab5:
     fig_combined.add_trace(go.Scatter(x=adjusted_cvar.index, y=adjusted_cvar * 100, name="F&G Adjusted CVaR", line=dict(color="darkred", dash="dot")))
 
     fig_combined.update_layout(
-        title=f"📉 Rolling {window}-Day Historical vs F&G Adjusted VaR & CVaR",
+        title=f"📉 Rolling {window}-Day VaR & CVaR: Historical vs F&G-Adjusted",
         xaxis_title="Date",
         yaxis_title="Loss (%)",
         height=600,
@@ -624,6 +623,7 @@ with tab5:
         margin=dict(l=40, r=40, t=50, b=30)
     )
     st.plotly_chart(fig_combined, use_container_width=True)
+
     # ---------------------------- TAB 6 ----------------------------------
 with tab6:
     st.markdown("## 💼 Rolling VaR & CVaR for 60/40 SPY–TLT Portfolio")
