@@ -645,7 +645,7 @@ with tab6:
     dynamic_exposure = exposure_ceiling - var_scaled * (exposure_ceiling - exposure_floor)
     dynamic_exposure = dynamic_exposure.clip(exposure_floor, exposure_ceiling)
 
-    # Align indexes
+    # Align data
     fng_values = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
     full_returns_sl = full_returns.loc[fng_values.index]
     dynamic_exposure = dynamic_exposure.loc[fng_values.index]
