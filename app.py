@@ -465,112 +465,43 @@ with tab4:
 
 # ---------------------------- TAB 5 ----------------------------------
 with tab5:
-    st.markdown("## 🔐 Risk Management Overlay using Fear & Greed")
+    st.header("📊 Distribution of CNN Fear & Greed Index")
 
-    try:
-        # Ensure fng_df and data are globally defined
-        if "fng_df" not in globals() or "data" not in globals():
-            raise ValueError("Required F&G or SPY data not found.")
+    st.markdown("""
+    This chart shows the **distribution of the CNN-style Fear & Greed Index** since 2007.
+    It allows us to understand how often the market was in Fear or Greed territory over time.
+    """)
 
-        latest = fng_df.iloc[-1]
-        last_date = latest.name.date()
+    # Histogram + KDE using Plotly
+    fig_hist = go.Figure()
 
-        st.subheader("📅 Date")
-        st.write(f"{last_date}")
+    fig_hist.add_trace(go.Histogram(
+        x=fng_df["FNG_Index"],
+        nbinsx=50,
+        name="Histogram",
+        marker_color='rgba(100, 150, 250, 0.7)',
+        opacity=0.75
+    ))
 
-        # Compute aligned return series
-        spy_returns = data["SPY"].pct_change().dropna()
-        aligned_index = fng_df.index.intersection(spy_returns.index)
-        fng_df_aligned = fng_df.loc[aligned_index]
-        spy_returns = spy_returns.loc[aligned_index]
+    fig_hist.update_layout(
+        title="Distribution of F&G Index (2007–Today)",
+        xaxis_title="F&G Index Value",
+        yaxis_title="Frequency",
+        bargap=0.05,
+        height=500
+    )
 
-        # Historical VaR and CVaR (95%)
-        var_95 = np.percentile(spy_returns, 5)
-        cvar_95 = spy_returns[spy_returns <= var_95].mean()
+    st.plotly_chart(fig_hist, use_container_width=True)
 
-        st.metric("📉 1-Day VaR (95%)", f"{var_95 * 100:.2f}%")
-        st.metric("📉 1-Day CVaR (95%)", f"{cvar_95 * 100:.2f}%")
+    # Descriptive stats table
+    stats = {
+        "Mean": fng_df["FNG_Index"].mean(),
+        "Std. Dev.": fng_df["FNG_Index"].std(),
+        "Min": fng_df["FNG_Index"].min(),
+        "Max": fng_df["FNG_Index"].max(),
+        "Skewness": fng_df["FNG_Index"].skew(),
+        "Kurtosis": fng_df["FNG_Index"].kurtosis()
+    }
 
-        # F&G score
-        score = latest["FNG_Index"]
-        st.metric("🧠 F&G Score", f"{score:.1f}")
-
-        def get_sentiment_label(score):
-            if score < 25:
-                return "🔴 Extreme Fear"
-            elif score < 50:
-                return "🟠 Fear"
-            elif score < 60:
-                return "🟡 Neutral"
-            elif score < 75:
-                return "🟢 Greed"
-            else:
-                return "🟣 Extreme Greed"
-
-        st.markdown(f"### Current Sentiment Regime: **{get_sentiment_label(score)}**")
-
-        # ------------------ Plot ------------------
-        st.markdown("### 📊 VaR & CVaR Overlay with Fear & Greed")
-
-        # Rolling VaR and CVaR
-        window = 100
-        confidence = 0.95
-        z = np.abs(np.percentile(np.random.randn(100000), (1 - confidence) * 100))
-
-        fng_df_aligned["VaR"] = -spy_returns.rolling(window).std() * z * 100
-        fng_df_aligned["CVaR"] = spy_returns.rolling(window).apply(
-            lambda x: -x[x <= np.percentile(x, (1 - confidence) * 100)].mean(), raw=True
-        ) * 100
-
-        fig_overlay = go.Figure()
-
-        # Add VaR & CVaR lines
-        fig_overlay.add_trace(go.Scatter(
-            x=fng_df_aligned.index, y=fng_df_aligned["VaR"],
-            name="VaR (95%)", yaxis="y1", line=dict(color="blue")
-        ))
-        fig_overlay.add_trace(go.Scatter(
-            x=fng_df_aligned.index, y=fng_df_aligned["CVaR"],
-            name="CVaR (95%)", yaxis="y1", line=dict(color="red", dash="dot")
-        ))
-
-        # Add F&G index on secondary axis
-        fig_overlay.add_trace(go.Scatter(
-            x=fng_df_aligned.index, y=fng_df_aligned["FNG_Index"],
-            name="F&G Index", yaxis="y2", line=dict(color="green")
-        ))
-
-        # Layout with corrected axis title syntax
-        fig_overlay.update_layout(
-            title_text="1-Day VaR & CVaR vs Fear & Greed Index",
-            xaxis=dict(title=dict(text="Date")),
-            yaxis=dict(
-                title=dict(text="VaR / CVaR (%)"),
-                titlefont=dict(color="blue"),
-                tickfont=dict(color="blue"),
-                side="left"
-            ),
-            yaxis2=dict(
-                title=dict(text="F&G Index (0–100)"),
-                titlefont=dict(color="green"),
-                tickfont=dict(color="green"),
-                overlaying="y",
-                side="right",
-                range=[0, 100]
-            ),
-            legend=dict(x=0.01, y=0.99),
-            height=500,
-            margin=dict(l=40, r=40, t=40, b=30)
-        )
-
-        # Add sentiment zone lines
-        fig_overlay.add_shape(type="line", x0=fng_df_aligned.index[0], x1=fng_df_aligned.index[-1], y0=25, y1=25, yref="y2",
-                              line=dict(color="gray", dash="dash"))
-        fig_overlay.add_shape(type="line", x0=fng_df_aligned.index[0], x1=fng_df_aligned.index[-1], y0=75, y1=75, yref="y2",
-                              line=dict(color="gray", dash="dash"))
-
-        st.plotly_chart(fig_overlay, use_container_width=True)
-
-    except Exception as e:
-        st.error("⚠️ Could not compute risk overlay.")
-        st.exception(e)
+    st.markdown("### 📈 Summary Statistics")
+    st.dataframe(pd.DataFrame(stats, index=["Value"]).T)
