@@ -515,7 +515,7 @@ with tab5:
     alpha = 1 - confidence_level
     lookback_days = 252 * 5
 
-    # SPY daily returns
+    # SPY daily returns (already downloaded globally)
     spy_prices = data["SPY"].dropna()
     spy_returns = spy_prices.pct_change().dropna()
     spy_returns = spy_returns[-lookback_days:]
@@ -538,10 +538,9 @@ with tab5:
     var_mc = np.percentile(sim_returns, alpha * 100)
     cvar_mc = sim_returns[sim_returns <= var_mc].mean()
 
-    # === Plot histogram with VaR and CVaR
+    # === Plot histogram
     fig = go.Figure()
 
-    # Histogram
     fig.add_trace(go.Histogram(
         x=spy_returns * 100,
         nbinsx=100,
@@ -550,50 +549,30 @@ with tab5:
         opacity=0.75
     ))
 
-    # VaR lines
     fig.add_trace(go.Scatter(
         x=[var_hist * 100, var_hist * 100],
-        y=[0, 100],
-        mode="lines",
-        name="VaR (Historical)",
-        line=dict(color="blue", width=2)
+        y=[0, 100], mode="lines", name="VaR (Historical)", line=dict(color="blue")
     ))
     fig.add_trace(go.Scatter(
         x=[var_param * 100, var_param * 100],
-        y=[0, 100],
-        mode="lines",
-        name="VaR (Parametric)",
-        line=dict(color="green", width=2, dash="dash")
+        y=[0, 100], mode="lines", name="VaR (Parametric)", line=dict(color="green", dash="dash")
     ))
     fig.add_trace(go.Scatter(
         x=[var_mc * 100, var_mc * 100],
-        y=[0, 100],
-        mode="lines",
-        name="VaR (Monte Carlo)",
-        line=dict(color="orange", width=2, dash="dot")
+        y=[0, 100], mode="lines", name="VaR (Monte Carlo)", line=dict(color="orange", dash="dot")
     ))
 
-    # CVaR lines
     fig.add_trace(go.Scatter(
         x=[cvar_hist * 100, cvar_hist * 100],
-        y=[0, 100],
-        mode="lines",
-        name="CVaR (Historical)",
-        line=dict(color="blue", width=1, dash="dot")
+        y=[0, 100], mode="lines", name="CVaR (Historical)", line=dict(color="blue", width=1, dash="dot")
     ))
     fig.add_trace(go.Scatter(
         x=[cvar_param * 100, cvar_param * 100],
-        y=[0, 100],
-        mode="lines",
-        name="CVaR (Parametric)",
-        line=dict(color="green", width=1, dash="dot")
+        y=[0, 100], mode="lines", name="CVaR (Parametric)", line=dict(color="green", width=1, dash="dot")
     ))
     fig.add_trace(go.Scatter(
         x=[cvar_mc * 100, cvar_mc * 100],
-        y=[0, 100],
-        mode="lines",
-        name="CVaR (Monte Carlo)",
-        line=dict(color="orange", width=1, dash="dot")
+        y=[0, 100], mode="lines", name="CVaR (Monte Carlo)", line=dict(color="orange", width=1, dash="dot")
     ))
 
     fig.update_layout(
@@ -601,17 +580,10 @@ with tab5:
         xaxis_title="1-Day Return (%)",
         yaxis_title="Frequency",
         height=600,
-        legend=dict(
-            orientation="v",
-            x=1.02,
-            y=1,
-            bgcolor="rgba(255,255,255,0.5)",
-            bordercolor="black"
-        ),
+        legend=dict(x=1.02, y=1, bgcolor="rgba(255,255,255,0.5)", bordercolor="black"),
         margin=dict(l=40, r=40, t=50, b=40)
     )
 
-    # === Layout: chart + table
     col1, col2 = st.columns([4, 1])
 
     with col1:
@@ -620,74 +592,51 @@ with tab5:
     with col2:
         st.markdown("### 📊 VaR & CVaR Table")
         summary_df = pd.DataFrame({
-            "VaR (%)": [
-                var_hist * 100,
-                var_param * 100,
-                var_mc * 100
-            ],
-            "CVaR (%)": [
-                cvar_hist * 100,
-                cvar_param * 100,
-                cvar_mc * 100
-            ],
-            "VaR ($)": [
-                -var_hist * investment,
-                -var_param * investment,
-                -var_mc * investment
-            ],
-            "CVaR ($)": [
-                -cvar_hist * investment,
-                -cvar_param * investment,
-                -cvar_mc * investment
-            ]
+            "VaR (%)": [var_hist, var_param, var_mc],
+            "CVaR (%)": [cvar_hist, cvar_param, cvar_mc],
+            "VaR ($)": [-var_hist * investment, -var_param * investment, -var_mc * investment],
+            "CVaR ($)": [-cvar_hist * investment, -cvar_param * investment, -cvar_mc * investment]
         }, index=["Historical", "Parametric", "Monte Carlo"])
-
         st.dataframe(summary_df.round(2), use_container_width=True, height=350)
-  
-# Reuse SPY data already loaded
-    spy_prices = data["SPY"]
-    spy_returns = spy_prices.pct_change().dropna() * 100
-    
-    # Parameters
-    window = 252  # 1-year window
-    alpha = 0.05
-    
-    # Rolling Historical VaR and CVaR
-    rolling_var = spy_returns.rolling(window).quantile(alpha)
-    rolling_cvar = spy_returns.rolling(window).apply(lambda x: x[x <= x.quantile(alpha)].mean(), raw=False)
-    
-    # Combine into DataFrame
-    rolling_df = pd.DataFrame({
-        "Return": spy_returns,
-        "Rolling VaR (5%)": rolling_var,
-        "Rolling CVaR (5%)": rolling_cvar
-    })
-    
-    # Plot using Plotly
-    import plotly.graph_objects as go
-    
-    fig_rolling = go.Figure()
-    
-    fig_rolling.add_trace(go.Scatter(
-        x=rolling_df.index, y=rolling_df["Rolling VaR (5%)"],
-        name="Rolling VaR (5%)", line=dict(color="orange")
-    ))
-    
-    fig_rolling.add_trace(go.Scatter(
-        x=rolling_df.index, y=rolling_df["Rolling CVaR (5%)"],
-        name="Rolling CVaR (5%)", line=dict(color="red", dash="dot")
-    ))
-    
-    fig_rolling.update_layout(
-        title="📉 Rolling 1-Year Historical VaR & CVaR (5%) — SPY Returns",
+
+    # === Rolling VaR & CVaR with F&G index overlay ===
+    st.markdown("### 🔁 Rolling Historical VaR & CVaR (5%) with F&G Index")
+
+    full_returns = data["SPY"].pct_change().dropna() * 100
+    rolling_var = full_returns.rolling(252).quantile(0.05)
+    rolling_cvar = full_returns.rolling(252).apply(lambda x: x[x <= x.quantile(0.05)].mean(), raw=False)
+
+    fng_plot = fng_df["FNG_Index"].copy()
+    aligned_index = fng_df.index.intersection(rolling_var.index)
+    fng_plot = fng_plot.loc[aligned_index]
+    rolling_var = rolling_var.loc[aligned_index]
+    rolling_cvar = rolling_cvar.loc[aligned_index]
+
+    fig_roll = go.Figure()
+    fig_roll.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var, name="Rolling VaR (5%)", line=dict(color="orange")))
+    fig_roll.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar, name="Rolling CVaR (5%)", line=dict(color="red", dash="dot")))
+    fig_roll.add_trace(go.Scatter(x=fng_plot.index, y=fng_plot, name="F&G Index", line=dict(color="green"), yaxis="y2"))
+
+    fig_roll.update_layout(
+        title="Rolling 1-Year Historical VaR & CVaR with F&G Index",
         xaxis_title="Date",
-        yaxis_title="Loss (%)",
-        height=500,
+        yaxis=dict(
+            title="Loss (%)",
+            titlefont=dict(color="orange"),
+            tickfont=dict(color="orange"),
+            side="left"
+        ),
+        yaxis2=dict(
+            title="F&G Index (0–100)",
+            overlaying="y",
+            side="right",
+            range=[0, 100],
+            titlefont=dict(color="green"),
+            tickfont=dict(color="green")
+        ),
+        height=600,
         legend=dict(x=0.01, y=0.99),
         margin=dict(l=40, r=40, t=50, b=30)
     )
-    
-    # Display in Tab 5
-    with tab5:
-        st.markdown("### 🔁 Rolling Historical VaR & CVaR (5%) for SPY")
-        st.plotly_chart(fig_rolling, use_container_width=True)
+
+    st.plotly_chart(fig_roll, use_container_width=True)
