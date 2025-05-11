@@ -576,17 +576,26 @@ with tab5:
     fig.add_trace(go.Scatter(x=[cvar_hist * 100]*2, y=[0, 100], name="CVaR (Historical)", line=dict(color="navy", dash="dot")))
     fig.add_trace(go.Scatter(x=[latest_adj_var * 100]*2, y=[0, 100], name="F&G Adjusted VaR", line=dict(color="lightcoral")))
     fig.add_trace(go.Scatter(x=[latest_adj_cvar * 100]*2, y=[0, 100], name="F&G Adjusted CVaR", line=dict(color="darkred", dash="dot")))
-    fig.update_layout(title="Distribution of SPY Returns with Historical & F&G Adjusted VaR", height=600)
+    fig.update_layout(
+        title="Distribution of SPY Returns with Historical & F&G Adjusted VaR",
+        height=600,
+        legend=dict(x=1.02, y=1)
+    )
 
-    # === Plot combined VaR & CVaR over time
+    # === Rolling plot
     fig_combined = go.Figure()
     fig_combined.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var * 100, name="Historical VaR", line=dict(color="lightblue")))
     fig_combined.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar * 100, name="Historical CVaR", line=dict(color="navy", dash="dot")))
     fig_combined.add_trace(go.Scatter(x=adjusted_var.index, y=adjusted_var * 100, name="F&G Adjusted VaR", line=dict(color="lightcoral")))
     fig_combined.add_trace(go.Scatter(x=adjusted_cvar.index, y=adjusted_cvar * 100, name="F&G Adjusted CVaR", line=dict(color="darkred", dash="dot")))
-    fig_combined.update_layout(title="📉 Historical vs F&G Adjusted VaR & CVaR", height=600)
+    fig_combined.update_layout(
+        title="📉 Historical vs F&G Adjusted Rolling VaR & CVaR",
+        height=600,
+        legend=dict(x=0.01, y=0.99),
+        margin=dict(l=40, r=40, t=50, b=30)
+    )
 
-    # === Compute breaches
+    # === Breach analysis
     var_breaches = full_returns.loc[adjusted_var.index] < adjusted_var
     cvar_breaches = full_returns.loc[adjusted_cvar.index] < adjusted_cvar
     rolling_breaches = full_returns.loc[rolling_var.index] < rolling_var
@@ -621,7 +630,6 @@ with tab5:
     - Boosts α(t) if short-term volatility is high
     """)
 
-    # Final display: rolling chart + breach table
     col3, col4 = st.columns([4, 1])
     with col3:
         st.plotly_chart(fig_combined, use_container_width=True)
