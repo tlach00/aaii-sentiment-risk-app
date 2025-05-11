@@ -579,8 +579,9 @@ with tab5:
     fig.update_layout(title="Distribution of SPY Returns with Historical & F&G Adjusted VaR", height=600)
 
     # === Combined Chart with S&P 500
-    cumulative_price = data["SPY"].loc[adjusted_var.index]
-    cumulative_return = (cumulative_price / cumulative_price.iloc[0]) * 100
+    # Compute cumulative return from percent changes
+    spy_daily_return = data["SPY"].pct_change().reindex(adjusted_var.index).dropna()
+    cumulative_return = (1 + spy_daily_return).cumprod() * 100
 
     fig_combined = go.Figure()
     fig_combined.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var * 100, name="Historical VaR", line=dict(color="#66b3ff")))
