@@ -508,50 +508,84 @@ with tab4:
 
 # ---------------------------- TAB 5 ----------------------------------
 with tab5:
-    st.markdown("## 🧠 Value at Risk (VaR) for a S&P 500 Portfolio")
+    st.markdown("## 🧠 Comparison of VaR Methods for the S&P 500 Portfolio")
 
-    # Parameters
-    investment = 1_000_000  # USD
+    investment = 1_000_000
     confidence_level = 0.95
-    lookback_days = 252 * 5  # last 5 years of data
+    alpha = 1 - confidence_level
+    lookback_days = 252 * 5
 
-    # Load SPY historical price
-    spy = data["SPY"].dropna()
-    spy_returns = spy.pct_change().dropna()
-
-    # Use recent history (e.g. last 5 years)
+    # SPY returns
+    spy_prices = data["SPY"].dropna()
+    spy_returns = spy_prices.pct_change().dropna()
     spy_returns = spy_returns[-lookback_days:]
 
-    # Sort returns to compute historical VaR
+    # === Historical VaR
     sorted_returns = np.sort(spy_returns.values)
-    var_index = int((1 - confidence_level) * len(sorted_returns))
-    var_1d = sorted_returns[var_index]  # 5th percentile return
+    idx = int(alpha * len(sorted_returns))
+    var_hist = sorted_returns[idx]
 
-    # Calculate dollar loss
-    var_amount = -var_1d * investment
+    # === Parametric (Variance-Covariance) VaR
+    mu = spy_returns.mean()
+    sigma = spy_returns.std()
+    from scipy.stats import norm
+    var_param = norm.ppf(alpha, mu, sigma)
 
-    # Display result
-    st.metric("📉 1-Day VaR (95%)", f"${var_amount:,.0f}", delta=f"{var_1d * 100:.2f}%")
+    # === Monte Carlo VaR (Optional)
+    np.random.seed(42)
+    sim_returns = np.random.normal(mu, sigma, 100000)
+    var_mc = np.percentile(sim_returns, alpha * 100)
 
-    # Optional histogram of returns
-    st.markdown("### 🔍 Historical Return Distribution")
+    # === Plot
+    st.markdown("### 📉 1-Day SPY Return Distribution with VaR Thresholds")
+
     fig = go.Figure()
+
+    # Histogram
     fig.add_trace(go.Histogram(
         x=spy_returns * 100,
         nbinsx=100,
-        marker_color="skyblue",
+        name="SPY Returns",
+        marker_color="lightblue",
         opacity=0.7
     ))
+
+    # VaR lines
     fig.add_vline(
-        x=var_1d * 100,
-        line=dict(color="red", dash="dash"),
-        annotation_text="VaR Threshold",
-        annotation_position="top left"
+        x=var_hist * 100, line=dict(color="blue"),
+        annotation_text="Historical VaR", annotation_position="top left"
     )
+    fig.add_vline(
+        x=var_param * 100, line=dict(color="green", dash="dash"),
+        annotation_text="Parametric VaR", annotation_position="top right"
+    )
+    fig.add_vline(
+        x=var_mc * 100, line=dict(color="orange", dash="dot"),
+        annotation_text="Monte Carlo VaR", annotation_position="bottom left"
+    )
+
     fig.update_layout(
-        title="Histogram of 1-Day SPY Returns",
         xaxis_title="1-Day Return (%)",
         yaxis_title="Frequency",
-        height=500
+        title="Comparison of VaR Methods (95% Confidence)",
+        height=600
     )
+
     st.plotly_chart(fig, use_container_width=True)
+
+    # Summary Table
+    st.markdown("### 📊 VaR Results Comparison")
+    summary_df = pd.DataFrame({
+        "VaR (%)": [
+            var_hist * 100,
+            var_param * 100,
+            var_mc * 100
+        ],
+        "Loss ($)": [
+            -var_hist * investment,
+            -var_param * investment,
+            -var_mc * investment
+        ]
+    }, index=["Historical", "Parametric", "Monte Carlo"])
+
+    st.dataframe(summary_df.round(2))
