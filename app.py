@@ -94,8 +94,12 @@ with tab1:
     end_date = pd.to_datetime(max_date)
     filtered_df = clean_df[(clean_df["Date"] >= start_date) & (clean_df["Date"] <= end_date)]
     st.dataframe(filtered_df, use_container_width=True, height=400)
+
     st.header("📁 Raw AAII Sentiment Excel File")
     st.dataframe(raw_df)
+
+    st.header("📊 Historical Data Behind CNN Fear & Greed Index")
+    st.dataframe(fng_df.tail(300), use_container_width=True, height=400)
 # ---------------------------- TAB 2 ----------------------------------
 with tab2:
     st.markdown("## :chart_with_upwards_trend: AAII Investor sentiment survey")
