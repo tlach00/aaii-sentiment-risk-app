@@ -640,33 +640,55 @@ with tab6:
     st.markdown("### ⚙️ Risk Management Parameters")
     exposure_floor = st.slider("Minimum Exposure (%)", 0, 100, 30) / 100
     exposure_ceiling = st.slider("Maximum Exposure (%)", 50, 150, 100) / 100
-    stop_loss_multiplier = st.slider("Stop-Loss Multiplier (×VaR)", 0.5, 3.0, 1.5)
+    
+    stop_loss_mode = st.radio("Stop-Loss Mode", ["Fixed Multiplier", "F&G-Based Dynamic Multiplier"])
 
-    # Calculate daily portfolio exposure: inverse relation to VaR (scaled)
+    # Exposure based on VaR scaling
     var_scaled = (adjusted_var - adjusted_var.min()) / (adjusted_var.max() - adjusted_var.min())
     dynamic_exposure = exposure_ceiling - var_scaled * (exposure_ceiling - exposure_floor)
     dynamic_exposure = dynamic_exposure.clip(exposure_floor, exposure_ceiling)
 
-    # Simulate portfolio returns with scaled exposure
+    # Simulate portfolio returns
     adjusted_returns = full_returns.loc[dynamic_exposure.index] * dynamic_exposure.shift(1)
     cumulative_return = (1 + adjusted_returns).cumprod()
 
-    # Apply Stop-Loss Trigger
-    triggered = full_returns < adjusted_var * stop_loss_multiplier
+    # Stop-loss logic
+    fng_values = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
+    full_returns_sl = full_returns.loc[fng_values.index]
+    dynamic_exposure = dynamic_exposure.loc[fng_values.index]
+
+    if stop_loss_mode == "Fixed Multiplier":
+        fixed_multiplier = st.slider("Stop-Loss Multiplier (×VaR)", 0.5, 3.0, 1.5)
+        stop_loss_threshold = adjusted_var.loc[fng_values.index] * fixed_multiplier
+    else:
+        def stop_loss_multiplier_from_fng(fng):
+            if fng < 25:
+                return 1.5
+            elif fng < 50:
+                return 1.2
+            elif fng < 75:
+                return 1.0
+            else:
+                return 0.8
+        sl_multiplier_series = fng_values.apply(stop_loss_multiplier_from_fng)
+        stop_loss_threshold = adjusted_var.loc[fng_values.index] * sl_multiplier_series
+
+    # Trigger stop-loss
+    triggered = full_returns_sl < stop_loss_threshold
     stop_loss_exposure = np.where(triggered, exposure_floor, dynamic_exposure)
-    stop_loss_exposure = pd.Series(stop_loss_exposure, index=full_returns.index)
-    adjusted_returns_sl = full_returns.loc[stop_loss_exposure.index] * stop_loss_exposure.shift(1)
+    stop_loss_exposure = pd.Series(stop_loss_exposure, index=full_returns_sl.index)
+    adjusted_returns_sl = full_returns_sl * stop_loss_exposure.shift(1)
     cumulative_return_sl = (1 + adjusted_returns_sl).cumprod()
 
-    # Plot: Cumulative Return with and without Stop-Loss
-    st.markdown("### 📈 Cumulative Portfolio Return (Backtest)")
+    # Plot cumulative returns
+    st.markdown("### 📈 Cumulative Portfolio Return")
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return, name="Dynamic Exposure Only"))
     fig.add_trace(go.Scatter(x=cumulative_return_sl.index, y=cumulative_return_sl, name="With Stop-Loss Trigger"))
-    fig.update_layout(title="Portfolio Growth", yaxis_title="Portfolio Value (Indexed)", xaxis_title="Date")
+    fig.update_layout(title="Portfolio Value Over Time", yaxis_title="Indexed Portfolio Value", xaxis_title="Date")
     st.plotly_chart(fig, use_container_width=True)
 
-    # Plot: Daily Exposure
+    # Plot exposure
     st.markdown("### 📊 Daily Portfolio Exposure")
     fig2 = go.Figure()
     fig2.add_trace(go.Scatter(x=dynamic_exposure.index, y=dynamic_exposure, name="Dynamic Exposure"))
