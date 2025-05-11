@@ -580,7 +580,7 @@ with tab5:
     fig.add_trace(go.Scatter(x=[latest_adj_cvar * 100]*2, y=[0, 100], name="F&G Adjusted CVaR", line=dict(color="#800000", dash="dot")))
     fig.update_layout(title="Distribution of SPY Returns with Historical & F&G Adjusted VaR", height=600)
 
-    # === Time Series Plot
+    # === Time Series Comparison with S&P 500 Price
     indexed_price = (spy_prices / spy_prices.loc[adjusted_var.dropna().index[0]]) * 100
     indexed_price = indexed_price.reindex(adjusted_var.index)
 
@@ -590,14 +590,12 @@ with tab5:
     fig_combined.add_trace(go.Scatter(x=adjusted_var.index, y=adjusted_var * 100, name="F&G Adjusted VaR", line=dict(color="#ff6666", dash="dot")))
     fig_combined.add_trace(go.Scatter(x=adjusted_cvar.index, y=adjusted_cvar * 100, name="F&G Adjusted CVaR", line=dict(color="#800000", dash="dot")))
     fig_combined.add_trace(go.Scatter(x=indexed_price.index, y=indexed_price, name="S&P 500 Indexed", line=dict(color="black", width=1.5), yaxis="y2"))
-    fig_combined.add_trace(go.Scatter(x=fng_df.index, y=fng_df["FNG_Index"], name="F&G Index", line=dict(color="purple", dash="dot"), yaxis="y3"))
     fig_combined.update_layout(
-        title="📉 Rolling VaR & CVaR vs S&P 500 Price & F&G Index",
+        title="📉 Rolling VaR & CVaR vs S&P 500 Price (Indexed)",
         xaxis=dict(title="Date"),
         yaxis=dict(title="VaR / CVaR (%)"),
         yaxis2=dict(title="S&P 500 (Indexed)", overlaying="y", side="right", showgrid=False),
-        yaxis3=dict(title="F&G Index", overlaying="y", side="right", anchor="free", position=1, showgrid=False),
-        height=650,
+        height=600,
         legend=dict(x=0.01, y=0.99),
         margin=dict(l=40, r=40, t=50, b=40)
     )
@@ -634,7 +632,6 @@ with tab5:
             "F&G Adj. VaR Breaches": (full_returns.loc[adjusted_var.index] < adjusted_var).mean() * 100,
         }, index=["% of Days"]).T
         st.dataframe(breach_df.round(2), use_container_width=True)
-
 
 # ---------------------------- TAB 6 ----------------------------------
 with tab6:
