@@ -640,16 +640,17 @@ with tab6:
     exposure_floor = 0.3
     exposure_ceiling = 1.0
 
-    # VaR-scaled dynamic exposure
+    # Compute scaled exposure based on adjusted VaR
     var_scaled = (adjusted_var - adjusted_var.min()) / (adjusted_var.max() - adjusted_var.min())
     dynamic_exposure = exposure_ceiling - var_scaled * (exposure_ceiling - exposure_floor)
     dynamic_exposure = dynamic_exposure.clip(exposure_floor, exposure_ceiling)
 
-    # Apply to aligned index
+    # Align indexes
     fng_values = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
     full_returns_sl = full_returns.loc[fng_values.index]
     dynamic_exposure = dynamic_exposure.loc[fng_values.index]
 
+    # Dynamic stop-loss multiplier based on sentiment
     def stop_loss_multiplier_from_fng(fng):
         if fng < 25:
             return 1.5
@@ -669,15 +670,16 @@ with tab6:
     adjusted_returns_sl = full_returns_sl * stop_loss_exposure.shift(1)
     cumulative_return_sl = (1 + adjusted_returns_sl).cumprod()
 
-    # Plot: Simplified cumulative return
+    # Plot cumulative return
     st.markdown("### 📈 Portfolio Return with F&G-Based Stop-Loss")
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=cumulative_return_sl.index, y=cumulative_return_sl, name="With Stop-Loss (F&G Adjusted)"))
     fig.update_layout(title="Indexed Portfolio Value", yaxis_title="Value", xaxis_title="Date")
     st.plotly_chart(fig, use_container_width=True)
 
-    # Trigger stats summary
+    # Trigger statistics table
     st.markdown("### 🧾 Stop-Loss Trigger Stats by Sentiment Regime")
+
     def classify_regime(fng):
         if fng < 25:
             return "Extreme Fear"
@@ -694,6 +696,12 @@ with tab6:
         "Triggered": triggered,
         "Regime": regime_series
     })
-    summary = trigger_df[trigger_df["Triggered"]].groupby(["Year", "Regime"]).size().unstack(fill_value=0)
+
+    summary = (
+        trigger_df[trigger_df["Triggered"]]
+        .groupby(["Year", "Regime"])
+        .size()
+        .unstack(fill_value=0)
+    )
 
     st.dataframe(summary)
