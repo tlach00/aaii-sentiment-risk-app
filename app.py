@@ -532,26 +532,26 @@ with tab5:
 
         # Layout with corrected keywords
         fig_overlay.update_layout(
-            title_text="1-Day VaR & CVaR vs Fear & Greed Index",
-            xaxis=dict(title_text="Date"),
-            yaxis=dict(
-                title_text="VaR / CVaR (%)",
-                titlefont=dict(color="blue"),
-                tickfont=dict(color="blue"),
-                side="left"
-            ),
-            yaxis2=dict(
-                title_text="F&G Index (0–100)",
-                titlefont=dict(color="green"),
-                tickfont=dict(color="green"),
-                overlaying="y",
-                side="right",
-                range=[0, 100]
-            ),
-            legend=dict(x=0.01, y=0.99),
-            height=500,
-            margin=dict(l=40, r=40, t=40, b=30)
-        )
+    title_text="1-Day VaR & CVaR vs Fear & Greed Index",
+    xaxis=dict(title=dict(text="Date")),
+    yaxis=dict(
+        title=dict(text="VaR / CVaR (%)"),
+        titlefont=dict(color="blue"),
+        tickfont=dict(color="blue"),
+        side="left"
+    ),
+    yaxis2=dict(
+        title=dict(text="F&G Index (0–100)"),
+        titlefont=dict(color="green"),
+        tickfont=dict(color="green"),
+        overlaying="y",
+        side="right",
+        range=[0, 100]
+    ),
+    legend=dict(x=0.01, y=0.99),
+    height=500,
+    margin=dict(l=40, r=40, t=40, b=30)
+)
 
         # Add sentiment zones
         fig_overlay.add_shape(type="line", x0=fng_df_aligned.index[0], x1=fng_df_aligned.index[-1], y0=25, y1=25, yref="y2",
