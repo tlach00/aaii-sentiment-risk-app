@@ -343,6 +343,56 @@ with tab3:
         margin=dict(l=40, r=40, t=30, b=30)
     )
     st.plotly_chart(fig_fng, use_container_width=True)
+
+    # ---------------- Distribution Plot ----------------
+    st.markdown("### 📊 Distribution of the F&G Index (2007–Today)")
+
+    st.markdown("""
+    This histogram shows the distribution of the CNN-style Fear & Greed Index across the full time series.
+    The vertical lines mark the key sentiment thresholds.
+    """)
+
+    fig_hist = go.Figure()
+
+    # Histogram
+    fig_hist.add_trace(go.Histogram(
+        x=fng_df["FNG_Index"],
+        nbinsx=50,
+        name="F&G Index Distribution",
+        marker_color='rgba(100, 150, 250, 0.7)',
+        opacity=0.75
+    ))
+
+    # Threshold lines and labels
+    thresholds = {
+        25: "Extreme Fear",
+        50: "Neutral",
+        75: "Greed"
+    }
+
+    for value, label in thresholds.items():
+        fig_hist.add_shape(
+            type="line",
+            x0=value, x1=value, y0=0, y1=1, yref='paper',
+            line=dict(color="black", dash="dot")
+        )
+        fig_hist.add_annotation(
+            x=value, y=1.02, yref='paper',
+            text=label,
+            showarrow=False,
+            font=dict(size=11)
+        )
+
+    fig_hist.update_layout(
+        title="Distribution of CNN Fear & Greed Index",
+        xaxis_title="F&G Index Value",
+        yaxis_title="Frequency",
+        bargap=0.05,
+        height=400,
+        margin=dict(l=40, r=40, t=40, b=30)
+    )
+
+    st.plotly_chart(fig_hist, use_container_width=True)
 # ---------------- tab 4 ----------------
 with tab4:
     import yfinance as yf
