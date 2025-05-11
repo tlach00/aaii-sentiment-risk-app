@@ -78,12 +78,13 @@ def load_fng_data():
 fng_df, data = load_fng_data()
 
 # Tabs
-tab1, tab2, tab3, tab4, tab5, = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📁 Raw Excel Viewer",
     "📈 AAII Sentiment survey",
     "😱 CNN F&G replication", 
     "👻 Stock F&G", 
-    "📟 F&G in Risk Management"
+    "📟 F&G in Risk Management",
+    "⚖️ Dynamic Exposure Scaling & Stop-Loss Triggers"
 ])
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
@@ -631,3 +632,44 @@ with tab5:
         }, index=["% of Days"]).T
         st.dataframe(breach_df.round(2), use_container_width=True)
   
+# ---------------------------- TAB 6 ----------------------------------
+with tab6:
+    st.markdown("## ⚖️ Dynamic Exposure Scaling & Stop-Loss Triggers")
+
+    # Parameters
+    st.markdown("### ⚙️ Risk Management Parameters")
+    exposure_floor = st.slider("Minimum Exposure (%)", 0, 100, 30) / 100
+    exposure_ceiling = st.slider("Maximum Exposure (%)", 50, 150, 100) / 100
+    stop_loss_multiplier = st.slider("Stop-Loss Multiplier (×VaR)", 0.5, 3.0, 1.5)
+
+    # Calculate daily portfolio exposure: inverse relation to VaR (scaled)
+    var_scaled = (adjusted_var - adjusted_var.min()) / (adjusted_var.max() - adjusted_var.min())
+    dynamic_exposure = exposure_ceiling - var_scaled * (exposure_ceiling - exposure_floor)
+    dynamic_exposure = dynamic_exposure.clip(exposure_floor, exposure_ceiling)
+
+    # Simulate portfolio returns with scaled exposure
+    adjusted_returns = full_returns.loc[dynamic_exposure.index] * dynamic_exposure.shift(1)
+    cumulative_return = (1 + adjusted_returns).cumprod()
+
+    # Apply Stop-Loss Trigger
+    triggered = full_returns < adjusted_var * stop_loss_multiplier
+    stop_loss_exposure = np.where(triggered, exposure_floor, dynamic_exposure)
+    stop_loss_exposure = pd.Series(stop_loss_exposure, index=full_returns.index)
+    adjusted_returns_sl = full_returns.loc[stop_loss_exposure.index] * stop_loss_exposure.shift(1)
+    cumulative_return_sl = (1 + adjusted_returns_sl).cumprod()
+
+    # Plot: Cumulative Return with and without Stop-Loss
+    st.markdown("### 📈 Cumulative Portfolio Return (Backtest)")
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return, name="Dynamic Exposure Only"))
+    fig.add_trace(go.Scatter(x=cumulative_return_sl.index, y=cumulative_return_sl, name="With Stop-Loss Trigger"))
+    fig.update_layout(title="Portfolio Growth", yaxis_title="Portfolio Value (Indexed)", xaxis_title="Date")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Plot: Daily Exposure
+    st.markdown("### 📊 Daily Portfolio Exposure")
+    fig2 = go.Figure()
+    fig2.add_trace(go.Scatter(x=dynamic_exposure.index, y=dynamic_exposure, name="Dynamic Exposure"))
+    fig2.add_trace(go.Scatter(x=stop_loss_exposure.index, y=stop_loss_exposure, name="With Stop-Loss"))
+    fig2.update_layout(yaxis_title="Exposure (%)", xaxis_title="Date")
+    st.plotly_chart(fig2, use_container_width=True)
