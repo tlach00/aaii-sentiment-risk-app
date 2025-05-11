@@ -508,7 +508,7 @@ with tab4:
         else:
             st.warning("Could not retrieve or compute data for this ticker.")
 
-## ---------------------------- TAB 5 ----------------------------------
+# ---------------------------- TAB 5 ----------------------------------
 with tab5:
     st.markdown("## 🧠 Comparison of VaR & CVaR Methods for the S&P 500 Portfolio")
 
@@ -618,6 +618,7 @@ with tab5:
             "F&G Adj. VaR Breaches": (full_returns.loc[adjusted_var.index] < adjusted_var).mean() * 100,
         }, index=["% of Days"]).T
         st.dataframe(breach_df.round(2), use_container_width=True)
+
     # ---------------------------- TAB 6 ----------------------------------
 with tab6:
     st.markdown("## 💼 Rolling VaR & CVaR for 60/40 SPY–TLT Portfolio")
