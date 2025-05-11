@@ -582,7 +582,7 @@ with tab5:
     - When F&G is high → α(t) is low → less conservative VaR  
     - When F&G is low (fear) → α(t) is higher → more conservative VaR  
 
-    For each day, the VaR is computed using a rolling window of past 252 daily returns with the adjusted α(t).
+    For each day, the VaR is computed using a rolling window of past *N* days (default: 252).
     """)
 
     # === Compute rolling standard and adjusted VaR/CVaR
@@ -590,10 +590,12 @@ with tab5:
     fng_series = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
     full_returns = full_returns.loc[fng_series.index]
 
+    # Ruler to select rolling window
+    window = st.slider("Select rolling window length (in days)", min_value=100, max_value=600, value=252, step=10)
+
     fng_alpha = 0.01 + (100 - fng_series) / 100 * 0.09
     adjusted_var = pd.Series(index=full_returns.index, dtype=float)
     adjusted_cvar = pd.Series(index=full_returns.index, dtype=float)
-    window = 252
 
     for date in full_returns.index[window:]:
         past = full_returns.loc[:date].iloc[-window:]
@@ -603,11 +605,10 @@ with tab5:
         adjusted_var.loc[date] = var_t
         adjusted_cvar.loc[date] = cvar_t
 
-    # Classic rolling historical VaR & CVaR for comparison
     rolling_var = full_returns.rolling(window).quantile(0.05)
     rolling_cvar = full_returns.rolling(window).apply(lambda x: x[x <= x.quantile(0.05)].mean(), raw=False)
 
-    # === Plot all on one chart
+    # === Plot all in one graph
     fig_combined = go.Figure()
     fig_combined.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var * 100, name="Historical VaR (5%)", line=dict(color="orange")))
     fig_combined.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar * 100, name="Historical CVaR (5%)", line=dict(color="red", dash="dot")))
@@ -615,14 +616,14 @@ with tab5:
     fig_combined.add_trace(go.Scatter(x=adjusted_cvar.index, y=adjusted_cvar * 100, name="F&G Adjusted CVaR", line=dict(color="darkred", dash="dot")))
 
     fig_combined.update_layout(
-        title="📉 Historical vs F&G Adjusted Rolling VaR & CVaR (1-Year)",
+        title=f"📉 Rolling {window}-Day Historical vs F&G Adjusted VaR & CVaR",
         xaxis_title="Date",
         yaxis_title="Loss (%)",
         height=600,
         legend=dict(x=0.01, y=0.99),
         margin=dict(l=40, r=40, t=50, b=30)
     )
-    st.plotly_chart(fig_combined, use_container_width=True)    
+    st.plotly_chart(fig_combined, use_container_width=True)
     # ---------------------------- TAB 6 ----------------------------------
 with tab6:
     st.markdown("## 💼 Rolling VaR & CVaR for 60/40 SPY–TLT Portfolio")
