@@ -541,7 +541,7 @@ with tab5:
     st.markdown("### 📏 Select Rolling Window Length")
     window = st.slider("Rolling Window (days)", min_value=100, max_value=500, value=252, step=10)
 
-    # === F&G Adjusted Alpha (only sentiment)
+    # === F&G Adjusted Alpha (sentiment only)
     full_returns = data["SPY"].pct_change().dropna()
     fng_series = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
     full_returns = full_returns.loc[fng_series.index]
@@ -549,7 +549,7 @@ with tab5:
     fng_alpha = 0.01 + ((100 - fng_series) / 100) * 0.09
     fng_alpha = fng_alpha.clip(0.01, 0.2)
 
-    # === Compute Adjusted VaR & CVaR
+    # === Compute F&G Adjusted VaR & CVaR
     adjusted_var = pd.Series(index=full_returns.index, dtype=float)
     adjusted_cvar = pd.Series(index=full_returns.index, dtype=float)
     for date in full_returns.index[window:]:
@@ -564,7 +564,7 @@ with tab5:
     rolling_var = full_returns.rolling(window).quantile(alpha)
     rolling_cvar = full_returns.rolling(window).apply(lambda x: x[x <= x.quantile(alpha)].mean(), raw=False)
 
-    # === Histogram
+    # === Histogram Plot
     latest_adj_var = adjusted_var.dropna().iloc[-1]
     latest_adj_cvar = adjusted_cvar.dropna().iloc[-1]
 
@@ -578,9 +578,11 @@ with tab5:
     fig.add_trace(go.Scatter(x=[cvar_mc * 100]*2, y=[0, 100], name="CVaR (Monte Carlo)", line=dict(color="darkorange", dash="dot")))
     fig.add_trace(go.Scatter(x=[latest_adj_var * 100]*2, y=[0, 100], name="F&G Adjusted VaR", line=dict(color="#ff6666", dash="dot")))
     fig.add_trace(go.Scatter(x=[latest_adj_cvar * 100]*2, y=[0, 100], name="F&G Adjusted CVaR", line=dict(color="#800000", dash="dot")))
-    fig.update_layout(title="Distribution of SPY Returns with Historical & F&G Adjusted VaR", height=600)
+    fig.update_layout(title="Distribution of SPY Returns with VaR & CVaR (5%)", height=600)
 
-    # === Time Series Comparison with S&P 500 Price
+    st.plotly_chart(fig, use_container_width=True)
+
+    # === Rolling VaR/CVaR + Indexed SP500 Price
     indexed_price = (spy_prices / spy_prices.loc[adjusted_var.dropna().index[0]]) * 100
     indexed_price = indexed_price.reindex(adjusted_var.index)
 
@@ -600,10 +602,10 @@ with tab5:
         margin=dict(l=40, r=40, t=50, b=40)
     )
 
-    # === Display Layout
+    # === Display Table + Combined Plot
     col1, col2 = st.columns([4, 1])
     with col1:
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig_combined, use_container_width=True)
     with col2:
         st.markdown("### 📊 VaR Table")
         summary_df = pd.DataFrame({
@@ -618,13 +620,14 @@ with tab5:
     st.markdown(r"""
     $$ \alpha(t) = 0.01 + \left( \frac{100 - \text{F\&G}(t)}{100} \right) \cdot 0.09 $$
 
-    - Higher fear → higher α(t) → higher VaR
+    - Higher fear → higher α(t) → higher VaR  
     - Greedy market → α closer to 1% → lower VaR
     """)
 
+    # === Breach Table
     col3, col4 = st.columns([4, 1])
     with col3:
-        st.plotly_chart(fig_combined, use_container_width=True)
+        pass  # already shown fig_combined
     with col4:
         st.markdown("### ❗ Breach Frequency")
         breach_df = pd.DataFrame({
@@ -632,45 +635,6 @@ with tab5:
             "F&G Adj. VaR Breaches": (full_returns.loc[adjusted_var.index] < adjusted_var).mean() * 100,
         }, index=["% of Days"]).T
         st.dataframe(breach_df.round(2), use_container_width=True)
-
-
-    # === 📉 Risk Management Strategy Using F&G Adjusted VaR ===
-    st.markdown("### 🛑 Stop-Loss Strategy Using F&G-Adjusted VaR")
-
-    spy_returns_daily = data["SPY"].pct_change().dropna()
-    fng_adjusted_var = adjusted_var  # from earlier computation
-
-    # Align indices
-    spy_returns_daily = spy_returns_daily.reindex(fng_adjusted_var.index).dropna()
-    fng_adjusted_var = fng_adjusted_var.reindex(spy_returns_daily.index)
-
-    # 1. Passive: Buy & Hold
-    passive_cum_return = (1 + spy_returns_daily).cumprod()
-
-    # 2. F&G VaR Stop-Loss: set return to 0 on days where return < adjusted VaR
-    stop_loss_returns = spy_returns_daily.copy()
-    stop_loss_returns[spy_returns_daily < fng_adjusted_var] = 0
-    stop_cum_return = (1 + stop_loss_returns).cumprod()
-
-    # === Plot cumulative returns
-    fig_strategy = go.Figure()
-    fig_strategy.add_trace(go.Scatter(x=passive_cum_return.index, y=passive_cum_return,
-                                      name="Buy & Hold", line=dict(color="#3366cc")))
-    fig_strategy.add_trace(go.Scatter(x=stop_cum_return.index, y=stop_cum_return,
-                                      name="F&G VaR Stop-Loss", line=dict(color="#cc3300", dash="dot")))
-
-    fig_strategy.update_layout(
-        title="📊 F&G-Adjusted VaR Stop-Loss Strategy vs Buy & Hold",
-        xaxis_title="Date",
-        yaxis_title="Cumulative Return",
-        height=600,
-        legend=dict(x=0.01, y=0.99),
-        margin=dict(l=40, r=40, t=50, b=30)
-    )
-
-    st.plotly_chart(fig_strategy, use_container_width=True)
-
-
 
     # ---------------------------- TAB 6 ----------------------------------
 with tab6:
