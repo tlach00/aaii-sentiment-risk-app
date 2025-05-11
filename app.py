@@ -465,43 +465,32 @@ with tab4:
 
 # ---------------------------- TAB 5 ----------------------------------
 with tab5:
-    st.header("📊 Distribution of CNN Fear & Greed Index")
+    st.markdown("## 📊 Distribution of F&G Index (2007–Today)")
 
-    st.markdown("""
-    This chart shows the **distribution of the CNN-style Fear & Greed Index** since 2007.
-    It allows us to understand how often the market was in Fear or Greed territory over time.
-    """)
+    try:
+        # Ensure fng_df is loaded
+        if fng_df is None or fng_df.empty:
+            st.error("❌ F&G data not available.")
+        else:
+            # Plot histogram
+            fig_dist = go.Figure()
+            fig_dist.add_trace(go.Histogram(
+                x=fng_df["FNG_Index"],
+                nbinsx=50,
+                marker=dict(color="skyblue"),
+                opacity=0.75
+            ))
 
-    # Histogram + KDE using Plotly
-    fig_hist = go.Figure()
+            fig_dist.update_layout(
+                title="Distribution of F&G Index (2007–Today)",
+                xaxis_title="F&G Index Value",
+                yaxis_title="Frequency",
+                bargap=0.05,
+                height=500
+            )
 
-    fig_hist.add_trace(go.Histogram(
-        x=fng_df["FNG_Index"],
-        nbinsx=50,
-        name="Histogram",
-        marker_color='rgba(100, 150, 250, 0.7)',
-        opacity=0.75
-    ))
+            st.plotly_chart(fig_dist, use_container_width=True)
 
-    fig_hist.update_layout(
-        title="Distribution of F&G Index (2007–Today)",
-        xaxis_title="F&G Index Value",
-        yaxis_title="Frequency",
-        bargap=0.05,
-        height=500
-    )
-
-    st.plotly_chart(fig_hist, use_container_width=True)
-
-    # Descriptive stats table
-    stats = {
-        "Mean": fng_df["FNG_Index"].mean(),
-        "Std. Dev.": fng_df["FNG_Index"].std(),
-        "Min": fng_df["FNG_Index"].min(),
-        "Max": fng_df["FNG_Index"].max(),
-        "Skewness": fng_df["FNG_Index"].skew(),
-        "Kurtosis": fng_df["FNG_Index"].kurtosis()
-    }
-
-    st.markdown("### 📈 Summary Statistics")
-    st.dataframe(pd.DataFrame(stats, index=["Value"]).T)
+    except Exception as e:
+        st.error("⚠️ Could not generate F&G distribution plot.")
+        st.exception(e)
