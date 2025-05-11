@@ -643,3 +643,51 @@ with tab5:
         }, index=["Historical", "Parametric", "Monte Carlo"])
 
         st.dataframe(summary_df.round(2), use_container_width=True, height=350)
+  
+# Reuse SPY data already loaded
+    spy_prices = data["SPY"]
+    spy_returns = spy_prices.pct_change().dropna() * 100
+    
+    # Parameters
+    window = 252  # 1-year window
+    alpha = 0.05
+    
+    # Rolling Historical VaR and CVaR
+    rolling_var = spy_returns.rolling(window).quantile(alpha)
+    rolling_cvar = spy_returns.rolling(window).apply(lambda x: x[x <= x.quantile(alpha)].mean(), raw=False)
+    
+    # Combine into DataFrame
+    rolling_df = pd.DataFrame({
+        "Return": spy_returns,
+        "Rolling VaR (5%)": rolling_var,
+        "Rolling CVaR (5%)": rolling_cvar
+    })
+    
+    # Plot using Plotly
+    import plotly.graph_objects as go
+    
+    fig_rolling = go.Figure()
+    
+    fig_rolling.add_trace(go.Scatter(
+        x=rolling_df.index, y=rolling_df["Rolling VaR (5%)"],
+        name="Rolling VaR (5%)", line=dict(color="orange")
+    ))
+    
+    fig_rolling.add_trace(go.Scatter(
+        x=rolling_df.index, y=rolling_df["Rolling CVaR (5%)"],
+        name="Rolling CVaR (5%)", line=dict(color="red", dash="dot")
+    ))
+    
+    fig_rolling.update_layout(
+        title="📉 Rolling 1-Year Historical VaR & CVaR (5%) — SPY Returns",
+        xaxis_title="Date",
+        yaxis_title="Loss (%)",
+        height=500,
+        legend=dict(x=0.01, y=0.99),
+        margin=dict(l=40, r=40, t=50, b=30)
+    )
+    
+    # Display in Tab 5
+    with tab5:
+        st.markdown("### 🔁 Rolling Historical VaR & CVaR (5%) for SPY")
+        st.plotly_chart(fig_rolling, use_container_width=True)
