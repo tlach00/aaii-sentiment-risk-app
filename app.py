@@ -539,35 +539,41 @@ with tab5:
     var_mc = np.percentile(sim_returns, alpha * 100)
     cvar_mc = sim_returns[sim_returns <= var_mc].mean()
 
-    # === Histogram with lines
+    # === F&G-Adjusted Rolling VaR
+    fng_rescaled_alpha = 0.01 + (100 - fng_df["FNG_Index"]) / 100 * (0.10 - 0.01)
+    spy_returns_full = data["SPY"].pct_change().dropna()
+    aligned_index = fng_df.index.intersection(spy_returns_full.index)
+
+    adjusted_var = pd.Series(index=aligned_index, dtype=float)
+    adjusted_cvar = pd.Series(index=aligned_index, dtype=float)
+    window = 252
+
+    for date in aligned_index[window:]:
+        past_returns = spy_returns_full.loc[:date].iloc[-window:]
+        fg_alpha = fng_rescaled_alpha.loc[date]
+        if len(past_returns) >= window:
+            var = np.percentile(past_returns, fg_alpha * 100)
+            cvar = past_returns[past_returns <= var].mean()
+            adjusted_var[date] = var
+            adjusted_cvar[date] = cvar
+
+    # === Histogram + lines ===
     fig = go.Figure()
-
-    fig.add_trace(go.Histogram(
-        x=spy_returns * 100,
-        nbinsx=100,
-        name="SPY Returns",
-        marker_color="lightblue",
-        opacity=0.75
-    ))
-
+    fig.add_trace(go.Histogram(x=spy_returns * 100, nbinsx=100, name="SPY Returns", marker_color="lightblue", opacity=0.75))
     fig.add_trace(go.Scatter(x=[var_hist * 100]*2, y=[0, 100], name="VaR (Historical)", mode="lines", line=dict(color="blue")))
     fig.add_trace(go.Scatter(x=[var_param * 100]*2, y=[0, 100], name="VaR (Parametric)", mode="lines", line=dict(color="green", dash="dash")))
     fig.add_trace(go.Scatter(x=[var_mc * 100]*2, y=[0, 100], name="VaR (Monte Carlo)", mode="lines", line=dict(color="orange", dash="dot")))
     fig.add_trace(go.Scatter(x=[cvar_hist * 100]*2, y=[0, 100], name="CVaR (Historical)", mode="lines", line=dict(color="blue", width=1, dash="dot")))
     fig.add_trace(go.Scatter(x=[cvar_param * 100]*2, y=[0, 100], name="CVaR (Parametric)", mode="lines", line=dict(color="green", width=1, dash="dot")))
     fig.add_trace(go.Scatter(x=[cvar_mc * 100]*2, y=[0, 100], name="CVaR (Monte Carlo)", mode="lines", line=dict(color="orange", width=1, dash="dot")))
-
     fig.update_layout(
         title="Distribution of 1-Day SPY Returns with VaR & CVaR (5%)",
-        xaxis_title="1-Day Return (%)",
-        yaxis_title="Frequency",
-        height=600,
+        xaxis_title="1-Day Return (%)", yaxis_title="Frequency", height=600,
         legend=dict(x=1.02, y=1, bgcolor="rgba(255,255,255,0.5)", bordercolor="black"),
         margin=dict(l=40, r=40, t=50, b=40)
     )
 
     col1, col2 = st.columns([4, 1])
-
     with col1:
         st.plotly_chart(fig, use_container_width=True)
 
@@ -581,80 +587,42 @@ with tab5:
         }, index=["Historical", "Parametric", "Monte Carlo"])
         st.dataframe(summary_df.round(2), use_container_width=True, height=350)
 
-    # === Rolling Historical VaR & CVaR ===
-    st.markdown("### 🔁 Rolling Historical VaR & CVaR (5%) for SPY")
+    # === Explanation block ===
+    with st.expander("📘 How the F&G-Adjusted VaR is Calculated"):
+        st.markdown(r"""
+        The **F&G-Adjusted Value at Risk (VaR)** dynamically adjusts the confidence level based on market sentiment.
 
-    full_returns = data["SPY"].pct_change().dropna() * 100
-    window = 252
-    rolling_var = full_returns.rolling(window).quantile(0.05)
-    rolling_cvar = full_returns.rolling(window).apply(lambda x: x[x <= x.quantile(0.05)].mean(), raw=False)
+        ### Formula:
+        We define a time-varying quantile level $\alpha_t$ using the Fear & Greed index:
 
-    fig_rolling = go.Figure()
-    fig_rolling.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var, name="Rolling VaR (5%)", line=dict(color="orange")))
-    fig_rolling.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar, name="Rolling CVaR (5%)", line=dict(color="red", dash="dot")))
+        $$
+        \alpha_t = \frac{100 - \text{FNG}_t}{100} \times (q_\text{max} - q_\text{min}) + q_\text{min}
+        $$
 
-    fig_rolling.update_layout(
-        title="📉 Rolling 1-Year Historical VaR & CVaR (5%) — SPY Returns",
-        xaxis_title="Date",
-        yaxis_title="Loss (%)",
-        height=500,
-        legend=dict(x=0.01, y=0.99),
-        margin=dict(l=40, r=40, t=50, b=30)
-    )
+        where:
+        - $\text{FNG}_t$ is the normalized Fear & Greed score at time $t$ (scaled 0–100),
+        - $q_\text{min} = 0.01$ (Extreme Fear → conservative VaR),
+        - $q_\text{max} = 0.10$ (Extreme Greed → more risk-tolerant VaR),
+        - $\alpha_t$ determines the **percentile used to compute VaR**.
 
-    st.plotly_chart(fig_rolling, use_container_width=True)
-    
-    # === F&G-Based Dynamic VaR ===
-    st.markdown("### 🧠 F&G-Based Dynamic VaR (Illustrative Logic)")
+        ### Interpretation:
+        - When **F&G = 10** → $\alpha = 0.019$ → **2% VaR** (risk-averse).
+        - When **F&G = 90** → $\alpha = 0.091$ → **9% VaR** (risk-tolerant).
 
-    def compute_fng_adjusted_var(returns, fng_scores, base_window=252):
-        adjusted_var = []
-        for r, s in zip(returns.rolling(base_window), fng_scores.rolling(base_window)):
-            if len(r) < base_window or len(s) < base_window:
-                adjusted_var.append(np.nan)
-                continue
-            # Adjust percentile between 1% (high fear) and 10% (extreme greed)
-            adjustment = np.interp(s.iloc[-1], [0, 100], [0.01, 0.10])
-            adjusted_var.append(np.percentile(r, adjustment * 100))
-        return pd.Series(adjusted_var, index=returns.index)
+        This method simulates how a portfolio manager might adjust risk estimates based on prevailing market sentiment.
+        """)
 
-    fng_series = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
-    aligned_returns = full_returns.loc[fng_series.index]
-    aligned_fng = fng_series.loc[aligned_returns.index]
-
-    fng_adjusted_var = compute_fng_adjusted_var(aligned_returns, aligned_fng)
-
-    # Plot
+    # === Rolling F&G-adjusted chart ===
     fig_fng_var = go.Figure()
-    fig_fng_var.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var,
-                                     name="Rolling VaR (5%)", line=dict(color="orange")))
-    fig_fng_var.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar,
-                                     name="Rolling CVaR (5%)", line=dict(color="red", dash="dot")))
-    fig_fng_var.add_trace(go.Scatter(x=fng_adjusted_var.index, y=fng_adjusted_var,
-                                     name="F&G-Adjusted VaR", line=dict(color="purple", dash="dash")))
-
+    fig_fng_var.add_trace(go.Scatter(x=adjusted_var.index, y=adjusted_var * 100, name="F&G-Adjusted VaR", line=dict(color="purple")))
+    fig_fng_var.add_trace(go.Scatter(x=adjusted_cvar.index, y=adjusted_cvar * 100, name="F&G-Adjusted CVaR", line=dict(color="darkred", dash="dot")))
     fig_fng_var.update_layout(
-        title="📉 Rolling VaR & CVaR vs F&G-Adjusted VaR (S&P 500)",
-        xaxis_title="Date",
-        yaxis_title="Loss (%)",
-        height=500,
+        title="📉 Rolling F&G-Adjusted VaR & CVaR",
+        xaxis_title="Date", yaxis_title="Loss (%)", height=500,
         legend=dict(x=0.01, y=0.99),
         margin=dict(l=40, r=40, t=50, b=30)
     )
-
     st.plotly_chart(fig_fng_var, use_container_width=True)
-
-    # Summary table
-    st.markdown("#### 📊 Summary of Dynamic F&G Adjustment")
-    summary_table = pd.DataFrame({
-        "Mean F&G": [aligned_fng.mean()],
-        "Std F&G": [aligned_fng.std()],
-        "Mean SPY Return": [aligned_returns.mean()],
-        "Std SPY Return": [aligned_returns.std()],
-        "Mean F&G-Adjusted VaR": [fng_adjusted_var.mean()]
-    }).T.rename(columns={0: "Value"})
-
-    st.dataframe(summary_table.round(3), use_container_width=True, height=250)
 # ---------------------------- TAB 6 ----------------------------------
 with tab6:
     st.markdown("## 💼 Rolling VaR & CVaR for 60/40 SPY–TLT Portfolio")
