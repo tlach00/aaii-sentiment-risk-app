@@ -464,45 +464,51 @@ with tab5:
     st.markdown("## 🔐 Risk Management Overlay using Fear & Greed")
 
     try:
-        # Use global fng_df and data
+        # Ensure fng_df and data are globally defined
+        if "fng_df" not in globals() or "data" not in globals():
+            raise ValueError("Required F&G or SPY data not found.")
+
         latest = fng_df.iloc[-1]
         last_date = latest.name.date()
 
         st.subheader("📅 Date")
         st.write(f"{last_date}")
 
-        # Compute SPY 1-day returns
+        # Compute aligned return series
         spy_returns = data["SPY"].pct_change().dropna()
+        aligned_index = fng_df.index.intersection(spy_returns.index)
+        fng_df_aligned = fng_df.loc[aligned_index]
+        spy_returns = spy_returns.loc[aligned_index]
 
-        # Align FNG and SPY on common dates
-        common_index = spy_returns.index.intersection(fng_df.index)
-        spy_returns = spy_returns.loc[common_index]
-        fng_df_aligned = fng_df.loc[common_index]
-
-        # Static (full sample) VaR and CVaR
+        # Historical VaR and CVaR (95%)
         var_95 = np.percentile(spy_returns, 5)
         cvar_95 = spy_returns[spy_returns <= var_95].mean()
 
         st.metric("📉 1-Day VaR (95%)", f"{var_95 * 100:.2f}%")
         st.metric("📉 1-Day CVaR (95%)", f"{cvar_95 * 100:.2f}%")
 
-        # F&G score today
+        # F&G score
         score = latest["FNG_Index"]
         st.metric("🧠 F&G Score", f"{score:.1f}")
 
         def get_sentiment_label(score):
-            if score < 25: return "🔴 Extreme Fear"
-            elif score < 50: return "🟠 Fear"
-            elif score < 60: return "🟡 Neutral"
-            elif score < 75: return "🟢 Greed"
-            else: return "🟣 Extreme Greed"
+            if score < 25:
+                return "🔴 Extreme Fear"
+            elif score < 50:
+                return "🟠 Fear"
+            elif score < 60:
+                return "🟡 Neutral"
+            elif score < 75:
+                return "🟢 Greed"
+            else:
+                return "🟣 Extreme Greed"
 
         st.markdown(f"### Current Sentiment Regime: **{get_sentiment_label(score)}**")
 
-        # ----------------- Graph -------------------
+        # ------------------ Plot ------------------
         st.markdown("### 📊 VaR & CVaR Overlay with Fear & Greed")
 
-        # Rolling window
+        # Rolling VaR and CVaR
         window = 100
         confidence = 0.95
         z = np.abs(np.percentile(np.random.randn(100000), (1 - confidence) * 100))
@@ -514,7 +520,7 @@ with tab5:
 
         fig_overlay = go.Figure()
 
-        # VaR & CVaR
+        # Add VaR & CVaR lines
         fig_overlay.add_trace(go.Scatter(
             x=fng_df_aligned.index, y=fng_df_aligned["VaR"],
             name="VaR (95%)", yaxis="y1", line=dict(color="blue")
@@ -524,36 +530,36 @@ with tab5:
             name="CVaR (95%)", yaxis="y1", line=dict(color="red", dash="dot")
         ))
 
-        # F&G Index
+        # Add F&G index on secondary axis
         fig_overlay.add_trace(go.Scatter(
             x=fng_df_aligned.index, y=fng_df_aligned["FNG_Index"],
             name="F&G Index", yaxis="y2", line=dict(color="green")
         ))
 
-        # Layout with corrected keywords
+        # Layout with corrected axis title syntax
         fig_overlay.update_layout(
-    title_text="1-Day VaR & CVaR vs Fear & Greed Index",
-    xaxis=dict(title=dict(text="Date")),
-    yaxis=dict(
-        title=dict(text="VaR / CVaR (%)"),
-        titlefont=dict(color="blue"),
-        tickfont=dict(color="blue"),
-        side="left"
-    ),
-    yaxis2=dict(
-        title=dict(text="F&G Index (0–100)"),
-        titlefont=dict(color="green"),
-        tickfont=dict(color="green"),
-        overlaying="y",
-        side="right",
-        range=[0, 100]
-    ),
-    legend=dict(x=0.01, y=0.99),
-    height=500,
-    margin=dict(l=40, r=40, t=40, b=30)
-)
+            title_text="1-Day VaR & CVaR vs Fear & Greed Index",
+            xaxis=dict(title=dict(text="Date")),
+            yaxis=dict(
+                title=dict(text="VaR / CVaR (%)"),
+                titlefont=dict(color="blue"),
+                tickfont=dict(color="blue"),
+                side="left"
+            ),
+            yaxis2=dict(
+                title=dict(text="F&G Index (0–100)"),
+                titlefont=dict(color="green"),
+                tickfont=dict(color="green"),
+                overlaying="y",
+                side="right",
+                range=[0, 100]
+            ),
+            legend=dict(x=0.01, y=0.99),
+            height=500,
+            margin=dict(l=40, r=40, t=40, b=30)
+        )
 
-        # Add sentiment zones
+        # Add sentiment zone lines
         fig_overlay.add_shape(type="line", x0=fng_df_aligned.index[0], x1=fng_df_aligned.index[-1], y0=25, y1=25, yref="y2",
                               line=dict(color="gray", dash="dash"))
         fig_overlay.add_shape(type="line", x0=fng_df_aligned.index[0], x1=fng_df_aligned.index[-1], y0=75, y1=75, yref="y2",
