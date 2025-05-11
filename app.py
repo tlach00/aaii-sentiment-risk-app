@@ -508,35 +508,37 @@ with tab4:
 
 # ---------------------------- TAB 5 ----------------------------------
 with tab5:
-    st.markdown("## 🧠 Comparison of VaR Methods for the S&P 500 Portfolio")
+    st.markdown("## 🧠 Comparison of VaR & CVaR Methods for the S&P 500 Portfolio")
 
     investment = 1_000_000
     confidence_level = 0.95
     alpha = 1 - confidence_level
     lookback_days = 252 * 5
 
-    # SPY returns
+    # SPY daily returns
     spy_prices = data["SPY"].dropna()
     spy_returns = spy_prices.pct_change().dropna()
     spy_returns = spy_returns[-lookback_days:]
 
-    # === Historical VaR
+    # === Historical VaR & CVaR
     sorted_returns = np.sort(spy_returns.values)
-    idx = int(alpha * len(sorted_returns))
-    var_hist = sorted_returns[idx]
+    var_hist = np.percentile(sorted_returns, alpha * 100)
+    cvar_hist = sorted_returns[sorted_returns <= var_hist].mean()
 
-    # === Parametric (Variance-Covariance) VaR
+    # === Parametric VaR & CVaR (Normality assumption)
     mu = spy_returns.mean()
     sigma = spy_returns.std()
     from scipy.stats import norm
     var_param = norm.ppf(alpha, mu, sigma)
+    cvar_param = mu - sigma * norm.pdf(norm.ppf(alpha)) / alpha
 
-    # === Monte Carlo VaR (Optional)
+    # === Monte Carlo VaR & CVaR
     np.random.seed(42)
     sim_returns = np.random.normal(mu, sigma, 100000)
     var_mc = np.percentile(sim_returns, alpha * 100)
+    cvar_mc = sim_returns[sim_returns <= var_mc].mean()
 
-    # === Build plot with legend
+    # === Plot histogram with VaR and CVaR
     fig = go.Figure()
 
     # Histogram
@@ -548,33 +550,54 @@ with tab5:
         opacity=0.75
     ))
 
-    # Add VaR lines with legend entries
+    # VaR lines
     fig.add_trace(go.Scatter(
         x=[var_hist * 100, var_hist * 100],
         y=[0, 100],
         mode="lines",
-        name="Historical VaR",
+        name="VaR (Historical)",
         line=dict(color="blue", width=2)
     ))
-
     fig.add_trace(go.Scatter(
         x=[var_param * 100, var_param * 100],
         y=[0, 100],
         mode="lines",
-        name="Parametric VaR",
+        name="VaR (Parametric)",
         line=dict(color="green", width=2, dash="dash")
     ))
-
     fig.add_trace(go.Scatter(
         x=[var_mc * 100, var_mc * 100],
         y=[0, 100],
         mode="lines",
-        name="Monte Carlo VaR",
+        name="VaR (Monte Carlo)",
         line=dict(color="orange", width=2, dash="dot")
     ))
 
+    # CVaR lines
+    fig.add_trace(go.Scatter(
+        x=[cvar_hist * 100, cvar_hist * 100],
+        y=[0, 100],
+        mode="lines",
+        name="CVaR (Historical)",
+        line=dict(color="blue", width=1, dash="dot")
+    ))
+    fig.add_trace(go.Scatter(
+        x=[cvar_param * 100, cvar_param * 100],
+        y=[0, 100],
+        mode="lines",
+        name="CVaR (Parametric)",
+        line=dict(color="green", width=1, dash="dot")
+    ))
+    fig.add_trace(go.Scatter(
+        x=[cvar_mc * 100, cvar_mc * 100],
+        y=[0, 100],
+        mode="lines",
+        name="CVaR (Monte Carlo)",
+        line=dict(color="orange", width=1, dash="dot")
+    ))
+
     fig.update_layout(
-        title="Distribution of 1-Day SPY Returns with 5% VaR Thresholds",
+        title="Distribution of 1-Day SPY Returns with VaR & CVaR (5%)",
         xaxis_title="1-Day Return (%)",
         yaxis_title="Frequency",
         height=600,
@@ -588,24 +611,35 @@ with tab5:
         margin=dict(l=40, r=40, t=50, b=40)
     )
 
-    # === Layout side by side: plot | stats
+    # === Layout: chart + table
     col1, col2 = st.columns([4, 1])
 
     with col1:
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        st.markdown("### 📊 VaR Comparison")
+        st.markdown("### 📊 VaR & CVaR Table")
         summary_df = pd.DataFrame({
             "VaR (%)": [
                 var_hist * 100,
                 var_param * 100,
                 var_mc * 100
             ],
-            "Loss ($)": [
+            "CVaR (%)": [
+                cvar_hist * 100,
+                cvar_param * 100,
+                cvar_mc * 100
+            ],
+            "VaR ($)": [
                 -var_hist * investment,
                 -var_param * investment,
                 -var_mc * investment
+            ],
+            "CVaR ($)": [
+                -cvar_hist * investment,
+                -cvar_param * investment,
+                -cvar_mc * investment
             ]
         }, index=["Historical", "Parametric", "Monte Carlo"])
-        st.dataframe(summary_df.round(2), use_container_width=True, height=250)
+
+        st.dataframe(summary_df.round(2), use_container_width=True, height=350)
