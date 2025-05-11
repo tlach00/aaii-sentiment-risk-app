@@ -695,4 +695,5 @@ with tab6:
         "Regime": regime_series
     })
     summary = trigger_df[trigger_df["Triggered"]].groupby(["Year", "Regime"]).size().unstack(fill_value=0)
-    import ace_tools as tools; tools.display_dataframe_to_user(name="Stop-Loss Triggers by Year & Regime", dataframe=summary)
+
+    st.dataframe(summary)
