@@ -539,41 +539,45 @@ with tab5:
     var_mc = np.percentile(sim_returns, alpha * 100)
     cvar_mc = sim_returns[sim_returns <= var_mc].mean()
 
-    # === F&G Adjusted α(t) using return-based override
+    # === Rolling Window Length
+    st.markdown("### 📏 Select Rolling Window Length")
+    window = st.slider("Rolling Window (days)", min_value=100, max_value=500, value=252, step=10)
+
+    # === Adjusted Alpha Strategies
     full_returns = data["SPY"].pct_change().dropna()
     fng_series = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
     full_returns = full_returns.loc[fng_series.index]
 
-    vol20 = full_returns.rolling(20).std()
-    vol_norm = vol20 / vol20.max()
-    fng_alpha = 0.01 + ((100 - fng_series) / 100) * 0.06 + vol_norm * 0.03
+    alpha_base = 0.03 + ((100 - fng_series) / 100) * 0.06
+    alpha_jump = alpha_base.copy()
+    alpha_jump[full_returns < -0.025] += 0.02
 
-    # Add +0.02 if daily return < -2.5%
-    fng_alpha[full_returns < -0.025] += 0.02
-    fng_alpha = fng_alpha.clip(0.01, 0.2)
+    alpha_ampl = 0.035 + ((100 - fng_series) / 100) * 0.07
+    alpha_ampl[full_returns < -0.025] += 0.02
 
-    # Select rolling window
-    st.markdown("### 📏 Select Rolling Window Length")
-    window = st.slider("Rolling Window (days)", min_value=100, max_value=500, value=252, step=10)
+    # === Compute Rolling VaR & CVaR
+    def compute_adjusted_var(returns, alpha_series, window):
+        var = pd.Series(index=returns.index, dtype=float)
+        cvar = pd.Series(index=returns.index, dtype=float)
+        for date in returns.index[window:]:
+            past = returns.loc[:date].iloc[-window:]
+            alpha_t = alpha_series.loc[date]
+            v = np.percentile(past, alpha_t * 100)
+            cv = past[past <= v].mean()
+            var.loc[date] = v
+            cvar.loc[date] = cv
+        return var, cvar
 
-    # Rolling adjusted VaR / CVaR
-    adjusted_var = pd.Series(index=full_returns.index, dtype=float)
-    adjusted_cvar = pd.Series(index=full_returns.index, dtype=float)
-    for date in full_returns.index[window:]:
-        past = full_returns.loc[:date].iloc[-window:]
-        alpha_t = fng_alpha.loc[date]
-        var_t = np.percentile(past, alpha_t * 100)
-        cvar_t = past[past <= var_t].mean()
-        adjusted_var.loc[date] = var_t
-        adjusted_cvar.loc[date] = cvar_t
-
-    # Rolling historical VaR/CVaR
     rolling_var = full_returns.rolling(window).quantile(0.05)
     rolling_cvar = full_returns.rolling(window).apply(lambda x: x[x <= x.quantile(0.05)].mean(), raw=False)
 
-    # === HISTOGRAM
-    latest_adj_var = adjusted_var.dropna().iloc[-1]
-    latest_adj_cvar = adjusted_cvar.dropna().iloc[-1]
+    var_base, cvar_base = compute_adjusted_var(full_returns, alpha_base, window)
+    var_jump, cvar_jump = compute_adjusted_var(full_returns, alpha_jump, window)
+    var_ampl, cvar_ampl = compute_adjusted_var(full_returns, alpha_ampl, window)
+
+    # === Histogram Plot
+    latest_adj_var = var_jump.dropna().iloc[-1]
+    latest_adj_cvar = cvar_jump.dropna().iloc[-1]
 
     fig = go.Figure()
     fig.add_trace(go.Histogram(x=spy_returns * 100, nbinsx=100, name="SPY Returns", marker_color="#cce5ff", opacity=0.75))
@@ -583,27 +587,23 @@ with tab5:
     fig.add_trace(go.Scatter(x=[latest_adj_cvar * 100]*2, y=[0, 100], name="F&G Adjusted CVaR", line=dict(color="#800000", dash="dot")))
     fig.update_layout(title="Distribution of SPY Returns with Historical & F&G Adjusted VaR", height=600)
 
-    # === TIME SERIES COMPARISON
+    # === Time Series Comparison
     fig_combined = go.Figure()
     fig_combined.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var * 100, name="Historical VaR", line=dict(color="#66b3ff")))
     fig_combined.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar * 100, name="Historical CVaR", line=dict(color="#004080")))
-    fig_combined.add_trace(go.Scatter(x=adjusted_var.index, y=adjusted_var * 100, name="F&G Adjusted VaR", line=dict(color="#ff6666", dash="dot")))
-    fig_combined.add_trace(go.Scatter(x=adjusted_cvar.index, y=adjusted_cvar * 100, name="F&G Adjusted CVaR", line=dict(color="#800000", dash="dot")))
-    fig_combined.update_layout(title="📉 Historical vs F&G Adjusted Rolling VaR & CVaR", height=600)
 
-    # === TABLES
-    var_breaches = full_returns.loc[adjusted_var.index] < adjusted_var
-    cvar_breaches = full_returns.loc[adjusted_cvar.index] < adjusted_cvar
-    rolling_breaches = full_returns.loc[rolling_var.index] < rolling_var
-    rolling_cvar_breaches = full_returns.loc[rolling_cvar.index] < rolling_cvar
+    fig_combined.add_trace(go.Scatter(x=var_base.index, y=var_base * 100, name="F&G VaR – Base", line=dict(color="#ff9999", dash="dot")))
+    fig_combined.add_trace(go.Scatter(x=cvar_base.index, y=cvar_base * 100, name="F&G CVaR – Base", line=dict(color="#800000", dash="dot")))
 
-    breach_df = pd.DataFrame({
-        "Rolling VaR Breaches": rolling_breaches.mean() * 100,
-        "Rolling CVaR Breaches": rolling_cvar_breaches.mean() * 100,
-        "F&G Adj. VaR Breaches": var_breaches.mean() * 100,
-        "F&G Adj. CVaR Breaches": cvar_breaches.mean() * 100,
-    }, index=["% of Days"])
+    fig_combined.add_trace(go.Scatter(x=var_jump.index, y=var_jump * 100, name="F&G VaR – Jump", line=dict(color="#ff6666", dash="dot")))
+    fig_combined.add_trace(go.Scatter(x=cvar_jump.index, y=cvar_jump * 100, name="F&G CVaR – Jump", line=dict(color="#660000", dash="dot")))
 
+    fig_combined.add_trace(go.Scatter(x=var_ampl.index, y=var_ampl * 100, name="F&G VaR – Amplified", line=dict(color="#ff3333", dash="dot")))
+    fig_combined.add_trace(go.Scatter(x=cvar_ampl.index, y=cvar_ampl * 100, name="F&G CVaR – Amplified", line=dict(color="#4d0000", dash="dot")))
+
+    fig_combined.update_layout(title="📉 Historical vs F&G Adjusted Rolling VaR & CVaR Methods", height=600)
+
+    # === Tables
     col1, col2 = st.columns([4, 1])
     with col1:
         st.plotly_chart(fig, use_container_width=True)
@@ -619,9 +619,9 @@ with tab5:
 
     st.markdown("### 🧮 F&G Adjusted VaR Concept")
     st.markdown(r"""
-    **α(t) = 0.01 + (1 - F&G(t)/100) × 0.06 + Normalized Volatility × 0.03**
-
-    - Plus **+0.02** boost to α(t) if daily return < **-2.5%**
+    - **Base**: α(t) = 0.03 + (1 - F&G(t)/100) × 0.06  
+    - **Jump**: + 0.02 boost if return < -2.5%  
+    - **Amplified**: α(t) = 0.035 + (...) × 0.07 + boost  
     """)
 
     col3, col4 = st.columns([4, 1])
@@ -629,7 +629,13 @@ with tab5:
         st.plotly_chart(fig_combined, use_container_width=True)
     with col4:
         st.markdown("### ❗ Breach Frequency")
-        st.dataframe(breach_df.T.round(2), use_container_width=True)
+        breach_df = pd.DataFrame({
+            "Rolling VaR Breaches": (full_returns.loc[rolling_var.index] < rolling_var).mean() * 100,
+            "F&G Base": (full_returns.loc[var_base.index] < var_base).mean() * 100,
+            "F&G Jump": (full_returns.loc[var_jump.index] < var_jump).mean() * 100,
+            "F&G Amplified": (full_returns.loc[var_ampl.index] < var_ampl).mean() * 100,
+        }, index=["% of Days"]).T
+        st.dataframe(breach_df.round(2), use_container_width=True)
 
 
     # ---------------------------- TAB 6 ----------------------------------
