@@ -530,7 +530,7 @@ with tab5:
         ))
 
         fig_overlay.update_layout(
-            title="1-Day VaR & CVaR vs Fear & Greed Index",
+            title_text="1-Day VaR & CVaR vs Fear & Greed Index",
             xaxis=dict(title="Date"),
             yaxis=dict(
                 title="VaR / CVaR (%)",
