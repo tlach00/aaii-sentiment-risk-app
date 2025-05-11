@@ -634,6 +634,43 @@ with tab5:
         st.dataframe(breach_df.round(2), use_container_width=True)
 
 
+    # === 📉 Risk Management Strategy Using F&G Adjusted VaR ===
+    st.markdown("### 🛑 Stop-Loss Strategy Using F&G-Adjusted VaR")
+
+    spy_returns_daily = data["SPY"].pct_change().dropna()
+    fng_adjusted_var = adjusted_var  # from earlier computation
+
+    # Align indices
+    spy_returns_daily = spy_returns_daily.reindex(fng_adjusted_var.index).dropna()
+    fng_adjusted_var = fng_adjusted_var.reindex(spy_returns_daily.index)
+
+    # 1. Passive: Buy & Hold
+    passive_cum_return = (1 + spy_returns_daily).cumprod()
+
+    # 2. F&G VaR Stop-Loss: set return to 0 on days where return < adjusted VaR
+    stop_loss_returns = spy_returns_daily.copy()
+    stop_loss_returns[spy_returns_daily < fng_adjusted_var] = 0
+    stop_cum_return = (1 + stop_loss_returns).cumprod()
+
+    # === Plot cumulative returns
+    fig_strategy = go.Figure()
+    fig_strategy.add_trace(go.Scatter(x=passive_cum_return.index, y=passive_cum_return,
+                                      name="Buy & Hold", line=dict(color="#3366cc")))
+    fig_strategy.add_trace(go.Scatter(x=stop_cum_return.index, y=stop_cum_return,
+                                      name="F&G VaR Stop-Loss", line=dict(color="#cc3300", dash="dot")))
+
+    fig_strategy.update_layout(
+        title="📊 F&G-Adjusted VaR Stop-Loss Strategy vs Buy & Hold",
+        xaxis_title="Date",
+        yaxis_title="Cumulative Return",
+        height=600,
+        legend=dict(x=0.01, y=0.99),
+        margin=dict(l=40, r=40, t=50, b=30)
+    )
+
+    st.plotly_chart(fig_strategy, use_container_width=True)
+
+
 
     # ---------------------------- TAB 6 ----------------------------------
 with tab6:
