@@ -14,11 +14,11 @@ from tqdm import tqdm
 from datetime import datetime, timedelta
 warnings.filterwarnings("ignore")
 st.set_page_config(page_title="AAII Sentiment & S&P 500 Dashboard", layout="wide")
+
 # Sklearn: Preprocessing, Model, Metrics
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import train_test_split
-
 
 st.title(":bar_chart: AAII Sentiment & S&P 500 Dashboard")
 
@@ -26,6 +26,7 @@ st.title(":bar_chart: AAII Sentiment & S&P 500 Dashboard")
 @st.cache_data
 def load_raw_excel():
     return pd.read_excel("sentiment_data.xlsx", header=None)
+
 @st.cache_data
 def load_clean_data():
     df = pd.read_excel("sentiment_data.xlsx", skiprows=7, usecols="A:D,M", header=None)
@@ -36,6 +37,7 @@ def load_clean_data():
     df = df.sort_values("Date")
     df["SP500_Return"] = df["SP500_Close"].pct_change() * 100
     return df.dropna()
+
 raw_df = load_raw_excel()
 clean_df = load_clean_data()
 
@@ -77,6 +79,8 @@ def load_fng_data():
     fng_df.dropna(inplace=True)
     return fng_df, data
 
+# ✅ Call the F&G function here and store results globally
+fng_df, data = load_fng_data()
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📁 Raw Excel Viewer",
@@ -234,11 +238,14 @@ with tab2:
     ).resolve_scale(y='independent').properties(height=300)
     st.altair_chart(chart3, use_container_width=True)
 
+
+# ---------------------------- TAB 3 ----------------------------
 with tab3:
     import plotly.graph_objects as go
 
     st.markdown("## 🧐 CNN-Style Fear & Greed Replication")
-    fng_df = load_fng_data()
+
+    # ✅ Use globally loaded fng_df (no need to call load_fng_data again)
 
     with st.expander("🧠 How This CNN-Style Fear & Greed Index Works"):
         st.markdown("""
