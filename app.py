@@ -245,8 +245,6 @@ with tab3:
 
     st.markdown("## 🧐 CNN-Style Fear & Greed Replication")
 
-    # ✅ Use globally loaded fng_df (no need to call load_fng_data again)
-
     with st.expander("🧠 How This CNN-Style Fear & Greed Index Works"):
         st.markdown("""
         The official **CNN Fear & Greed Index** includes:
@@ -344,59 +342,40 @@ with tab3:
     )
     st.plotly_chart(fig_fng, use_container_width=True)
 
-    # ---------------- Distribution Plot ----------------
+    # 📊 Distribution + stats below
     st.markdown("### 📊 Distribution of the F&G Index (2007–Today)")
+    st.markdown("This histogram shows the distribution of the CNN-style Fear & Greed Index since 2007. Vertical lines mark key sentiment thresholds.")
 
-    st.markdown("""
-    This histogram shows the **distribution** of the CNN-style Fear & Greed Index over time.
-    Vertical lines mark the sentiment thresholds: **Extreme Fear (25)**, **Neutral (50)**, and **Greed (75)**.
-    """)
-
-    col_left, col_right = st.columns([3, 1])  # 75% chart | 25% stats table
+    col_left, col_right = st.columns([3, 1])
 
     with col_left:
         fig_hist = go.Figure()
-
         fig_hist.add_trace(go.Histogram(
             x=fng_df["FNG_Index"],
             nbinsx=50,
-            name="F&G Index Distribution",
             marker_color='rgba(100, 150, 250, 0.7)',
             opacity=0.75
         ))
 
-        thresholds = {
-            25: "Extreme Fear",
-            50: "Neutral",
-            75: "Greed"
-        }
-
-        for value, label in thresholds.items():
+        for val, label in zip([25, 50, 75], ["Extreme Fear", "Neutral", "Greed"]):
             fig_hist.add_shape(
-                type="line",
-                x0=value, x1=value, y0=0, y1=1, yref='paper',
+                type="line", x0=val, x1=val, y0=0, y1=1, xref="x", yref="paper",
                 line=dict(color="black", dash="dot")
             )
             fig_hist.add_annotation(
-                x=value, y=1.02, yref='paper',
-                text=label,
-                showarrow=False,
-                font=dict(size=11)
+                x=val, y=1, yref="paper", text=label,
+                showarrow=False, font=dict(size=12), yanchor="bottom"
             )
 
         fig_hist.update_layout(
-            title="Distribution of CNN Fear & Greed Index",
             xaxis_title="F&G Index Value",
             yaxis_title="Frequency",
-            bargap=0.05,
             height=500,
-            margin=dict(l=30, r=30, t=40, b=30)
+            bargap=0.05
         )
-
         st.plotly_chart(fig_hist, use_container_width=True)
 
     with col_right:
-        st.markdown("### 🧮 Summary Statistics")
         stats = {
             "Mean": fng_df["FNG_Index"].mean(),
             "Std. Dev.": fng_df["FNG_Index"].std(),
@@ -405,23 +384,8 @@ with tab3:
             "Skewness": fng_df["FNG_Index"].skew(),
             "Kurtosis": fng_df["FNG_Index"].kurtosis()
         }
-        df_stats = pd.DataFrame(stats, index=["Value"]).T.round(2)
-        st.dataframe(df_stats, height=500, use_container_width=True)
-
-    # ---------------- Summary Stats ----------------
-    st.markdown("### 📈 Summary Statistics")
-
-    stats = {
-        "Mean": fng_df["FNG_Index"].mean(),
-        "Std. Dev.": fng_df["FNG_Index"].std(),
-        "Min": fng_df["FNG_Index"].min(),
-        "Max": fng_df["FNG_Index"].max(),
-        "Skewness": fng_df["FNG_Index"].skew(),
-        "Kurtosis": fng_df["FNG_Index"].kurtosis()
-    }
-
-    st.dataframe(pd.DataFrame(stats, index=["Value"]).T)
-
+        st.markdown("#### 📋 Summary Stats")
+        st.dataframe(pd.DataFrame(stats, index=["Value"]).T, use_container_width=True)
 # ---------------- tab 4 ----------------
 with tab4:
     import yfinance as yf
