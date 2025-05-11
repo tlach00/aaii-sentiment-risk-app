@@ -521,7 +521,7 @@ with tab5:
     spy_returns = spy_prices.pct_change().dropna()
     spy_returns = spy_returns[-lookback_days:]
 
-    # === Historical
+    # === Classic Historical VaR & CVaR
     sorted_returns = np.sort(spy_returns.values)
     var_hist = np.percentile(sorted_returns, alpha * 100)
     cvar_hist = sorted_returns[sorted_returns <= var_hist].mean()
@@ -539,58 +539,60 @@ with tab5:
     var_mc = np.percentile(sim_returns, alpha * 100)
     cvar_mc = sim_returns[sim_returns <= var_mc].mean()
 
-    # === F&G Adjusted Alpha with Volatility Boost
+    # === F&G Adjusted Alpha + Crisis Override Rule
     full_returns = data["SPY"].pct_change().dropna()
     fng_series = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
-    full_returns = full_returns.loc[fng_series.index]
-    vol20 = full_returns.rolling(20).std()
-    vol_norm = vol20 / vol20.max()
-    fng_alpha = 0.01 + ((100 - fng_series) / 100) * 0.06 + vol_norm * 0.03
+    vix_series = data["^VIX"].pct_change().reindex(full_returns.index).dropna()
 
-    # Rolling window slider
+    valid_idx = fng_series.index.intersection(full_returns.index).intersection(vix_series.index)
+    full_returns = full_returns.loc[valid_idx]
+    fng_series = fng_series.loc[valid_idx]
+    vix_series = vix_series.loc[valid_idx]
+
+    vol_norm = full_returns.rolling(20).std() / full_returns.rolling(20).std().max()
+    base_alpha = 0.01 + ((100 - fng_series) / 100) * 0.06 + vol_norm * 0.03
+    crisis_override = (full_returns < -0.03) | (vix_series > 0.25)
+    base_alpha[crisis_override] = base_alpha[crisis_override].apply(lambda x: max(x, 0.09))
+
     st.markdown("### 📏 Select Rolling Window Length")
     window = st.slider("Rolling Window (days)", min_value=100, max_value=500, value=252, step=10)
 
-    # Compute adjusted VaR & CVaR
+    # === Rolling VaR & CVaR calculations
     adjusted_var = pd.Series(index=full_returns.index, dtype=float)
     adjusted_cvar = pd.Series(index=full_returns.index, dtype=float)
     for date in full_returns.index[window:]:
         past = full_returns.loc[:date].iloc[-window:]
-        alpha_t = fng_alpha.loc[date]
+        alpha_t = base_alpha.loc[date]
         var_t = np.percentile(past, alpha_t * 100)
         cvar_t = past[past <= var_t].mean()
         adjusted_var.loc[date] = var_t
         adjusted_cvar.loc[date] = cvar_t
 
-    # Classic rolling VaR/CVaR
+    # Rolling historical VaR & CVaR
     rolling_var = full_returns.rolling(window).quantile(0.05)
     rolling_cvar = full_returns.rolling(window).apply(lambda x: x[x <= x.quantile(0.05)].mean(), raw=False)
 
-    # === Histogram with VaR & CVaR
+    # === Histogram plot with latest adjusted values
     latest_adj_var = adjusted_var.dropna().iloc[-1]
     latest_adj_cvar = adjusted_cvar.dropna().iloc[-1]
+
     fig = go.Figure()
-    fig.add_trace(go.Histogram(x=spy_returns * 100, nbinsx=100, name="SPY Returns", marker_color="lightblue", opacity=0.75))
+    fig.add_trace(go.Histogram(x=spy_returns * 100, nbinsx=100, name="SPY Returns", marker_color="#cce6ff", opacity=0.75))
     fig.add_trace(go.Scatter(x=[var_hist * 100]*2, y=[0, 100], name="VaR (Historical)", line=dict(color="#66b3ff")))
-    fig.add_trace(go.Scatter(x=[cvar_hist * 100]*2, y=[0, 100], name="CVaR (Historical)", line=dict(color="#004080")))
+    fig.add_trace(go.Scatter(x=[cvar_hist * 100]*2, y=[0, 100], name="CVaR (Historical)", line=dict(color="#004080", dash="dot")))
     fig.add_trace(go.Scatter(x=[latest_adj_var * 100]*2, y=[0, 100], name="F&G Adjusted VaR", line=dict(color="#ff6666", dash="dot")))
     fig.add_trace(go.Scatter(x=[latest_adj_cvar * 100]*2, y=[0, 100], name="F&G Adjusted CVaR", line=dict(color="#800000", dash="dot")))
     fig.update_layout(title="Distribution of SPY Returns with Historical & F&G Adjusted VaR", height=600)
 
-    # === Rolling plot
+    # === Time Series Plot
     fig_combined = go.Figure()
     fig_combined.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var * 100, name="Historical VaR", line=dict(color="#66b3ff")))
-    fig_combined.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar * 100, name="Historical CVaR", line=dict(color="#004080")))
+    fig_combined.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar * 100, name="Historical CVaR", line=dict(color="#004080", dash="dot")))
     fig_combined.add_trace(go.Scatter(x=adjusted_var.index, y=adjusted_var * 100, name="F&G Adjusted VaR", line=dict(color="#ff6666", dash="dot")))
     fig_combined.add_trace(go.Scatter(x=adjusted_cvar.index, y=adjusted_cvar * 100, name="F&G Adjusted CVaR", line=dict(color="#800000", dash="dot")))
-    fig_combined.update_layout(
-        title="📉 Historical vs F&G Adjusted Rolling VaR & CVaR",
-        height=600,
-        legend=dict(x=0.01, y=0.99),
-        margin=dict(l=40, r=40, t=50, b=30)
-    )
+    fig_combined.update_layout(title="📉 Historical vs F&G Adjusted VaR & CVaR", height=600)
 
-    # === Breach analysis
+    # === Breach table
     var_breaches = full_returns.loc[adjusted_var.index] < adjusted_var
     cvar_breaches = full_returns.loc[adjusted_cvar.index] < adjusted_cvar
     rolling_breaches = full_returns.loc[rolling_var.index] < rolling_var
@@ -603,7 +605,7 @@ with tab5:
         "F&G Adj. CVaR Breaches": cvar_breaches.mean() * 100,
     }, index=["% of Days"])
 
-    # === Layout
+    # === VaR summary table
     col1, col2 = st.columns([4, 1])
     with col1:
         st.plotly_chart(fig, use_container_width=True)
@@ -617,12 +619,14 @@ with tab5:
         }, index=["Historical", "Parametric", "Monte Carlo"])
         st.dataframe(summary_df.round(2), use_container_width=True, height=350)
 
-    st.markdown("### 🧮 F&G Adjusted VaR Concept")
+    st.markdown("### 🧮 F&G Adjusted VaR Formula with Crisis Override")
     st.markdown(r"""
-    **α(t) = 0.01 + (1 - F&G(t)/100) × 0.06 + Normalized Volatility × 0.03**
+    **α(t) = 0.01 + (1 - F&G(t)/100) × 0.06 + VolatilityBoost × 0.03**
 
-    - The lower the sentiment → higher α(t) → higher VaR
-    - Boosts α(t) if short-term volatility is high
+    If **daily return < –3%** or **VIX daily spike > 25%**, we override α(t) to be at least **0.09**.
+
+    - The lower the sentiment → higher α(t) → higher VaR  
+    - Boosts α(t) further when short-term volatility or panic spikes
     """)
 
     col3, col4 = st.columns([4, 1])
