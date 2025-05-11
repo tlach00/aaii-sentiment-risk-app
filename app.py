@@ -465,65 +465,71 @@ with tab4:
 
 # ---------------------------- TAB 5 ----------------------------------
 with tab5:
-    st.header("📊 Distribution of CNN Fear & Greed Index")
+    st.header("🧠 Risk-Based S&P 500 VaR by Sentiment Regime")
 
     st.markdown("""
-    This chart shows the **distribution of the CNN-style Fear & Greed Index** since 2007.
-    It allows us to understand how often the market was in Fear or Greed territory over time.
+    This chart shows the **S&P 500 historical price** colored by the **Fear & Greed sentiment regime**, 
+    along with the corresponding **1-day 5% Value at Risk (VaR)** per regime.
     """)
 
-    # Histogram using Plotly
-    fig_hist = go.Figure()
+    # Create sentiment regime column
+    def assign_regime(score):
+        if score < 25:
+            return "Extreme Fear"
+        elif score < 50:
+            return "Fear"
+        elif score < 60:
+            return "Neutral"
+        elif score < 75:
+            return "Greed"
+        else:
+            return "Extreme Greed"
 
-    fig_hist.add_trace(go.Histogram(
-        x=fng_df["FNG_Index"],
-        nbinsx=50,
-        name="Histogram",
-        marker_color='rgba(100, 150, 250, 0.7)',
-        opacity=0.75
-    ))
+    fng_df["Regime"] = fng_df["FNG_Index"].apply(assign_regime)
 
-    # Add vertical lines for thresholds
-    thresholds = {
-        25: "Extreme Fear",
-        50: "Neutral",
-        75: "Greed"
+    # Compute daily returns for SPY
+    spy_returns = data["SPY"].pct_change().dropna()
+
+    # Align indexes
+    common_index = fng_df.index.intersection(spy_returns.index)
+    spy_returns = spy_returns.loc[common_index]
+    regimes = fng_df["Regime"].loc[common_index]
+    prices = data["SPY"].loc[common_index]
+
+    # Compute VaR by regime
+    var_by_regime = spy_returns.groupby(regimes).quantile(0.05) * 100
+
+    # Show VaR table
+    st.markdown("### 📉 1-Day 5% Historical VaR by Sentiment Regime")
+    st.dataframe(var_by_regime.rename("VaR (%)").to_frame())
+
+    # Plot S&P 500 with regime coloring
+    fig = go.Figure()
+    colors = {
+        "Extreme Fear": "#ff9999",
+        "Fear": "#ffcc99",
+        "Neutral": "#dddddd",
+        "Greed": "#99ff99",
+        "Extreme Greed": "#66cc66"
     }
 
-    for value, label in thresholds.items():
-        fig_hist.add_shape(
-            type="line",
-            x0=value, x1=value, y0=0, y1=1,
-            xref="x", yref="paper",
-            line=dict(color="gray", width=2, dash="dash")
-        )
-        fig_hist.add_annotation(
-            x=value, y=1.02, xref="x", yref="paper",
-            text=f"<b>{label}</b>",
-            showarrow=False,
-            font=dict(size=12, color="gray"),
-            align="center"
-        )
+    for regime, color in colors.items():
+        mask = regimes == regime
+        fig.add_trace(go.Scatter(
+            x=prices.index[mask],
+            y=prices[mask],
+            mode='lines',
+            name=regime,
+            line=dict(color=color),
+            showlegend=True
+        ))
 
-    fig_hist.update_layout(
-        title="Distribution of F&G Index (2007–Today)",
-        xaxis_title="F&G Index Value",
-        yaxis_title="Frequency",
-        bargap=0.05,
-        height=500
+    fig.update_layout(
+        title="S&P 500 Price Colored by Fear & Greed Regime",
+        xaxis_title="Date",
+        yaxis_title="S&P 500 Price (SPY)",
+        height=550,
+        margin=dict(l=40, r=40, t=40, b=40)
     )
 
-    st.plotly_chart(fig_hist, use_container_width=True)
-
-    # Descriptive stats table
-    stats = {
-        "Mean": fng_df["FNG_Index"].mean(),
-        "Std. Dev.": fng_df["FNG_Index"].std(),
-        "Min": fng_df["FNG_Index"].min(),
-        "Max": fng_df["FNG_Index"].max(),
-        "Skewness": fng_df["FNG_Index"].skew(),
-        "Kurtosis": fng_df["FNG_Index"].kurtosis()
-    }
-
-    st.markdown("### 📈 Summary Statistics")
-    st.dataframe(pd.DataFrame(stats, index=["Value"]).T)
+    st.plotly_chart(fig, use_container_width=True)
