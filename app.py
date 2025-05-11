@@ -509,7 +509,6 @@ with tab4:
             st.warning("Could not retrieve or compute data for this ticker.")
 
 # ---------------------------- TAB 5 ----------------------------------
-# ---------------------------- TAB 5 ----------------------------------
 with tab5:
     st.markdown("## 🧠 Comparison of VaR & CVaR Methods for the S&P 500 Portfolio")
 
@@ -552,7 +551,6 @@ with tab5:
     alpha_base = 0.03 + ((100 - fng_series) / 100) * 0.06
     alpha_jump = alpha_base.copy()
     alpha_jump[full_returns < -0.025] += 0.02
-
     alpha_ampl = 0.035 + ((100 - fng_series) / 100) * 0.07
     alpha_ampl[full_returns < -0.025] += 0.02
 
@@ -576,7 +574,7 @@ with tab5:
     var_jump, cvar_jump = compute_adjusted_var(full_returns, alpha_jump, window)
     var_ampl, cvar_ampl = compute_adjusted_var(full_returns, alpha_ampl, window)
 
-    # === Histogram Plot
+    # === Histogram
     latest_adj_var = var_jump.dropna().iloc[-1]
     latest_adj_cvar = cvar_jump.dropna().iloc[-1]
 
@@ -584,11 +582,11 @@ with tab5:
     fig.add_trace(go.Histogram(x=spy_returns * 100, nbinsx=100, name="SPY Returns", marker_color="#cce5ff", opacity=0.75))
     fig.add_trace(go.Scatter(x=[var_hist * 100]*2, y=[0, 100], name="VaR (Historical)", line=dict(color="#66b3ff")))
     fig.add_trace(go.Scatter(x=[cvar_hist * 100]*2, y=[0, 100], name="CVaR (Historical)", line=dict(color="#004080")))
-    fig.add_trace(go.Scatter(x=[latest_adj_var * 100]*2, y=[0, 100], name="F&G Adjusted VaR", line=dict(color="#ff6666", dash="dot")))
-    fig.add_trace(go.Scatter(x=[latest_adj_cvar * 100]*2, y=[0, 100], name="F&G Adjusted CVaR", line=dict(color="#800000", dash="dot")))
+    fig.add_trace(go.Scatter(x=[latest_adj_var * 100]*2, y=[0, 100], name="F&G Adjusted VaR (Jump)", line=dict(color="#ff6666", dash="dot")))
+    fig.add_trace(go.Scatter(x=[latest_adj_cvar * 100]*2, y=[0, 100], name="F&G Adjusted CVaR (Jump)", line=dict(color="#800000", dash="dot")))
     fig.update_layout(title="Distribution of SPY Returns with Historical & F&G Adjusted VaR", height=600)
 
-    # === Time Series Comparison
+    # === Time Series
     fig_combined = go.Figure()
     fig_combined.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var * 100, name="Historical VaR", line=dict(color="#66b3ff")))
     fig_combined.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar * 100, name="Historical CVaR", line=dict(color="#004080")))
@@ -618,7 +616,7 @@ with tab5:
         }, index=["Historical", "Parametric", "Monte Carlo"])
         st.dataframe(summary_df.round(2), use_container_width=True, height=350)
 
-    st.markdown("### 🧮 F&G Adjusted VaR Concept")
+    st.markdown("### 🧮 F&G Adjusted VaR Concepts")
     st.markdown(r"""
     - **Base**: α(t) = 0.03 + (1 - F&G(t)/100) × 0.06  
     - **Jump**: + 0.02 boost if return < -2.5%  
