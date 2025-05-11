@@ -7,22 +7,18 @@ import yfinance as yf
 from datetime import datetime, timedelta
 from scipy.stats import zscore
 import warnings
-import datetime
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 from tqdm import tqdm
-from datetime import datetime, timedelta
-warnings.filterwarnings("ignore")
-st.set_page_config(page_title="AAII Sentiment & S&P 500 Dashboard", layout="wide")
-
-# Sklearn: Preprocessing, Model, Metrics
 from sklearn.preprocessing import StandardScaler
 from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import train_test_split
 
+warnings.filterwarnings("ignore")
+st.set_page_config(page_title="AAII Sentiment & S&P 500 Dashboard", layout="wide")
 st.title(":bar_chart: AAII Sentiment & S&P 500 Dashboard")
 
-## datas from AAII survey
+## AAII survey data
 @st.cache_data
 def load_raw_excel():
     return pd.read_excel("sentiment_data.xlsx", header=None)
@@ -41,18 +37,17 @@ def load_clean_data():
 raw_df = load_raw_excel()
 clean_df = load_clean_data()
 
-## function for the F&G cnn replica
+## F&G Index function
 @st.cache_data
 def load_fng_data():
     tickers = ["^GSPC", "^VIX", "SPY", "TLT", "HYG", "LQD"]
-    data = yf.download(tickers, start="2007-01-01")["Close"]
-    data.dropna(inplace=True)
+    data = yf.download(tickers, start="2007-01-01")["Close"].dropna()
+    data.index = pd.to_datetime(data.index)  # ✅ Ensure consistent datetime index
 
     def normalize(series):
         z = (series - series.mean()) / series.std()
         return np.clip(50 + z * 25, 0, 100)
 
-    # Indicators
     momentum_ma = data["^GSPC"].rolling(window=125).mean()
     momentum = 100 * (data["^GSPC"] - momentum_ma) / momentum_ma
     strength = 100 * (data["^GSPC"] > momentum_ma).rolling(window=50).mean()
@@ -79,9 +74,10 @@ def load_fng_data():
     fng_df.dropna(inplace=True)
     return fng_df, data
 
-# ✅ Call the F&G function here and store results globally
+# ✅ Load data globally for use in all tabs
 fng_df, data = load_fng_data()
 
+# Tabs
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "📁 Raw Excel Viewer",
     "📈 AAII Sentiment survey",
@@ -463,11 +459,13 @@ with tab4:
         else:
             st.warning("Could not retrieve or compute data for this ticker.")
 
-# ---------------------------- TAB 5 ----------------------------
+# ---------------------------- TAB 5 ----------------------------------
 with tab5:
     st.markdown("## 🔐 Risk Management Overlay using Fear & Greed")
 
     try:
+        # Load data from global function
+        fng_df, data = load_fng_data()
         latest = fng_df.iloc[-1]
         last_date = latest.name.date()
 
@@ -477,12 +475,14 @@ with tab5:
         # 1-day return series from SPY (from global data)
         spy_returns = data["SPY"].pct_change().dropna()
 
-        # Align FNG index with return dates
-        fng_df_aligned = fng_df.loc[spy_returns.index]
+        # ✅ Align dates to avoid KeyError
+        common_index = fng_df.index.intersection(spy_returns.index)
+        fng_df_aligned = fng_df.loc[common_index]
+        spy_returns_aligned = spy_returns.loc[common_index]
 
-        # Historical VaR and CVaR (95%)
-        var_95 = np.percentile(spy_returns, 5)
-        cvar_95 = spy_returns[spy_returns <= var_95].mean()
+        # Historical VaR and CVaR over full series
+        var_95 = np.percentile(spy_returns_aligned, 5)
+        cvar_95 = spy_returns_aligned[spy_returns_aligned <= var_95].mean()
 
         st.metric("📉 1-Day VaR (95%)", f"{var_95 * 100:.2f}%")
         st.metric("📉 1-Day CVaR (95%)", f"{cvar_95 * 100:.2f}%")
@@ -508,35 +508,27 @@ with tab5:
         # -------------------- GRAPH SECTION ----------------------
         st.markdown("### 📊 VaR & CVaR Overlay with Fear & Greed")
 
-        # Rolling VaR & CVaR
         window = 100
         confidence = 0.95
         z = np.abs(np.percentile(np.random.randn(100000), (1 - confidence) * 100))
 
-        fng_df_aligned["VaR"] = -spy_returns.rolling(window).std() * z * 100
-        fng_df_aligned["CVaR"] = spy_returns.rolling(window).apply(
+        fng_df_aligned["VaR"] = -spy_returns_aligned.rolling(window).std() * z * 100
+        fng_df_aligned["CVaR"] = spy_returns_aligned.rolling(window).apply(
             lambda x: -x[x <= np.percentile(x, (1 - confidence) * 100)].mean(), raw=True
         ) * 100
 
         fig_overlay = go.Figure()
 
-        # Add VaR & CVaR
         fig_overlay.add_trace(go.Scatter(
-            x=fng_df_aligned.index, y=fng_df_aligned["VaR"],
-            name="VaR (95%)", yaxis="y1", line=dict(color="blue")
+            x=fng_df_aligned.index, y=fng_df_aligned["VaR"], name="VaR (95%)", yaxis="y1", line=dict(color="blue")
         ))
         fig_overlay.add_trace(go.Scatter(
-            x=fng_df_aligned.index, y=fng_df_aligned["CVaR"],
-            name="CVaR (95%)", yaxis="y1", line=dict(color="red", dash="dot")
+            x=fng_df_aligned.index, y=fng_df_aligned["CVaR"], name="CVaR (95%)", yaxis="y1", line=dict(color="red", dash="dot")
         ))
-
-        # Add FNG Index
         fig_overlay.add_trace(go.Scatter(
-            x=fng_df_aligned.index, y=fng_df_aligned["FNG_Index"],
-            name="F&G Index", yaxis="y2", line=dict(color="green")
+            x=fng_df_aligned.index, y=fng_df_aligned["FNG_Index"], name="F&G Index", yaxis="y2", line=dict(color="green")
         ))
 
-        # Layout
         fig_overlay.update_layout(
             title="1-Day VaR & CVaR vs Fear & Greed Index",
             xaxis=dict(title="Date"),
@@ -559,7 +551,6 @@ with tab5:
             margin=dict(l=40, r=40, t=40, b=30)
         )
 
-        # Sentiment zone lines
         fig_overlay.add_shape(type="line", x0=fng_df_aligned.index[0], x1=fng_df_aligned.index[-1], y0=25, y1=25, yref="y2",
                               line=dict(color="gray", dash="dash"))
         fig_overlay.add_shape(type="line", x0=fng_df_aligned.index[0], x1=fng_df_aligned.index[-1], y0=75, y1=75, yref="y2",
