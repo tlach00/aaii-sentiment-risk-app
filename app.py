@@ -75,7 +75,7 @@ def load_fng_data():
     fng_df["FNG_Index"] = fng_df.mean(axis=1)
     fng_df["FNG_Smooth"] = fng_df["FNG_Index"].rolling(window=100).mean()
     fng_df.dropna(inplace=True)
-    return fng_df
+    return fng_df, data
 
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -461,9 +461,8 @@ with tab5:
     st.markdown("## 🔐 Risk Management Overlay using Fear & Greed")
 
     try:
-        # Ensure fng_df and data from Tab 3 are defined
-        if "fng_df" not in globals() or "data" not in globals():
-            raise ValueError("Required F&G or SPY data not found.")
+        # Load F&G and price data
+        fng_df, data = load_fng_data()
 
         latest = fng_df.iloc[-1]
         last_date = latest.name.date()
@@ -471,18 +470,18 @@ with tab5:
         st.subheader("📅 Date")
         st.write(f"{last_date}")
 
-        # 1-day return series from SPY
+        # Calculate 1-day SPY returns
         spy_returns = data["SPY"].pct_change().dropna()
         fng_df = fng_df.loc[spy_returns.index]
 
-        # Historical VaR and CVaR over entire sample
+        # Historical VaR and CVaR over full sample
         var_95 = np.percentile(spy_returns, 5)
         cvar_95 = spy_returns[spy_returns <= var_95].mean()
 
         st.metric("📉 1-Day VaR (95%)", f"{var_95 * 100:.2f}%")
         st.metric("📉 1-Day CVaR (95%)", f"{cvar_95 * 100:.2f}%")
 
-        # Latest F&G score
+        # Show F&G value
         score = latest["FNG_Index"]
         st.metric("🧠 F&G Score", f"{score:.1f}")
 
@@ -503,7 +502,7 @@ with tab5:
         # -------------------- GRAPH SECTION ----------------------
         st.markdown("### 📊 VaR & CVaR Overlay with Fear & Greed")
 
-        # Rolling VaR & CVaR
+        # Rolling metrics
         window = 100
         confidence = 0.95
         z = np.abs(np.percentile(np.random.randn(100000), (1 - confidence) * 100))
@@ -515,7 +514,7 @@ with tab5:
 
         fig_overlay = go.Figure()
 
-        # Add VaR & CVaR
+        # VaR and CVaR
         fig_overlay.add_trace(go.Scatter(
             x=fng_df.index, y=fng_df["VaR"], name="VaR (95%)", yaxis="y1", line=dict(color="blue")
         ))
@@ -523,7 +522,7 @@ with tab5:
             x=fng_df.index, y=fng_df["CVaR"], name="CVaR (95%)", yaxis="y1", line=dict(color="red", dash="dot")
         ))
 
-        # Add FNG Index
+        # FNG Index
         fig_overlay.add_trace(go.Scatter(
             x=fng_df.index, y=fng_df["FNG_Index"], name="F&G Index", yaxis="y2", line=dict(color="green")
         ))
@@ -551,7 +550,7 @@ with tab5:
             margin=dict(l=40, r=40, t=40, b=30)
         )
 
-        # Sentiment zone lines
+        # Sentiment thresholds
         fig_overlay.add_shape(type="line", x0=fng_df.index[0], x1=fng_df.index[-1], y0=25, y1=25, yref="y2",
                               line=dict(color="gray", dash="dash"))
         fig_overlay.add_shape(type="line", x0=fng_df.index[0], x1=fng_df.index[-1], y0=75, y1=75, yref="y2",
