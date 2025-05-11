@@ -508,71 +508,50 @@ with tab4:
 
 # ---------------------------- TAB 5 ----------------------------------
 with tab5:
-    st.header("🧠 Risk-Based S&P 500 VaR by Sentiment Regime")
+    st.markdown("## 🧠 Value at Risk (VaR) for a S&P 500 Portfolio")
 
-    st.markdown("""
-    This chart shows the **S&P 500 historical price** colored by the **Fear & Greed sentiment regime**, 
-    along with the corresponding **1-day 5% Value at Risk (VaR)** per regime.
-    """)
+    # Parameters
+    investment = 1_000_000  # USD
+    confidence_level = 0.95
+    lookback_days = 252 * 5  # last 5 years of data
 
-    # Create sentiment regime column
-    def assign_regime(score):
-        if score < 25:
-            return "Extreme Fear"
-        elif score < 50:
-            return "Fear"
-        elif score < 60:
-            return "Neutral"
-        elif score < 75:
-            return "Greed"
-        else:
-            return "Extreme Greed"
+    # Load SPY historical price
+    spy = data["SPY"].dropna()
+    spy_returns = spy.pct_change().dropna()
 
-    fng_df["Regime"] = fng_df["FNG_Index"].apply(assign_regime)
+    # Use recent history (e.g. last 5 years)
+    spy_returns = spy_returns[-lookback_days:]
 
-    # Compute daily returns for SPY
-    spy_returns = data["SPY"].pct_change().dropna()
+    # Sort returns to compute historical VaR
+    sorted_returns = np.sort(spy_returns.values)
+    var_index = int((1 - confidence_level) * len(sorted_returns))
+    var_1d = sorted_returns[var_index]  # 5th percentile return
 
-    # Align indexes
-    common_index = fng_df.index.intersection(spy_returns.index)
-    spy_returns = spy_returns.loc[common_index]
-    regimes = fng_df["Regime"].loc[common_index]
-    prices = data["SPY"].loc[common_index]
+    # Calculate dollar loss
+    var_amount = -var_1d * investment
 
-    # Compute VaR by regime
-    var_by_regime = spy_returns.groupby(regimes).quantile(0.05) * 100
+    # Display result
+    st.metric("📉 1-Day VaR (95%)", f"${var_amount:,.0f}", delta=f"{var_1d * 100:.2f}%")
 
-    # Show VaR table
-    st.markdown("### 📉 1-Day 5% Historical VaR by Sentiment Regime")
-    st.dataframe(var_by_regime.rename("VaR (%)").to_frame())
-
-    # Plot S&P 500 with regime coloring
+    # Optional histogram of returns
+    st.markdown("### 🔍 Historical Return Distribution")
     fig = go.Figure()
-    colors = {
-        "Extreme Fear": "#ff9999",
-        "Fear": "#ffcc99",
-        "Neutral": "#dddddd",
-        "Greed": "#99ff99",
-        "Extreme Greed": "#66cc66"
-    }
-
-    for regime, color in colors.items():
-        mask = regimes == regime
-        fig.add_trace(go.Scatter(
-            x=prices.index[mask],
-            y=prices[mask],
-            mode='lines',
-            name=regime,
-            line=dict(color=color),
-            showlegend=True
-        ))
-
-    fig.update_layout(
-        title="S&P 500 Price Colored by Fear & Greed Regime",
-        xaxis_title="Date",
-        yaxis_title="S&P 500 Price (SPY)",
-        height=550,
-        margin=dict(l=40, r=40, t=40, b=40)
+    fig.add_trace(go.Histogram(
+        x=spy_returns * 100,
+        nbinsx=100,
+        marker_color="skyblue",
+        opacity=0.7
+    ))
+    fig.add_vline(
+        x=var_1d * 100,
+        line=dict(color="red", dash="dash"),
+        annotation_text="VaR Threshold",
+        annotation_position="top left"
     )
-
+    fig.update_layout(
+        title="Histogram of 1-Day SPY Returns",
+        xaxis_title="1-Day Return (%)",
+        yaxis_title="Frequency",
+        height=500
+    )
     st.plotly_chart(fig, use_container_width=True)
