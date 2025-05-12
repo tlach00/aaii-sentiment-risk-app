@@ -658,61 +658,66 @@ with tab5:
 
 # ---------------------------- TAB 6 ----------------------------------
 with tab6:
-    st.markdown("## ⚖️ F&G-Adjusted Stop-Loss Strategy")
+    st.markdown("## ⚖️ F&G-Adjusted Stop-Loss on a 60/40 Portfolio (SPY/TLT)")
 
     # Fixed exposure limits
     exposure_floor = 0.3
     exposure_ceiling = 1.0
 
-    # Compute scaled exposure based on adjusted VaR
-    var_scaled = (adjusted_var - adjusted_var.min()) / (adjusted_var.max() - adjusted_var.min())
+    # Get price and return data
+    spy = data["SPY"].pct_change().dropna()
+    tlt = data["TLT"].pct_change().dropna()
+    aligned_idx = spy.index.intersection(tlt.index).intersection(fng_df.index)
+
+    # Build 60/40 daily return series
+    port_returns = 0.6 * spy.loc[aligned_idx] + 0.4 * tlt.loc[aligned_idx]
+    fng_values = fng_df["FNG_Index"].loc[aligned_idx]
+
+    # Historical rolling VaR for the 60/40 portfolio
+    window = 100
+    var_series = port_returns.rolling(window=window).apply(lambda x: np.percentile(x, 5)).dropna()
+    var_series = var_series.loc[fng_values.index]  # align index
+
+    # F&G-based stop-loss multipliers
+    def stop_loss_multiplier_from_fng(fng):
+        if fng < 25: return 1.5
+        elif fng < 50: return 1.2
+        elif fng < 75: return 1.0
+        else: return 0.8
+
+    sl_multiplier_series = fng_values.apply(stop_loss_multiplier_from_fng)
+    stop_loss_threshold = var_series * sl_multiplier_series
+
+    # Determine stop-loss triggers
+    returns_aligned = port_returns.loc[stop_loss_threshold.index]
+    triggered = returns_aligned < stop_loss_threshold
+
+    # Exposure series with stop-loss
+    var_scaled = (var_series - var_series.min()) / (var_series.max() - var_series.min())
     dynamic_exposure = exposure_ceiling - var_scaled * (exposure_ceiling - exposure_floor)
     dynamic_exposure = dynamic_exposure.clip(exposure_floor, exposure_ceiling)
 
-    # Align data
-    fng_values = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
-    full_returns_sl = full_returns.loc[fng_values.index]
-    dynamic_exposure = dynamic_exposure.loc[fng_values.index]
-
-    # Dynamic stop-loss multiplier based on sentiment
-    def stop_loss_multiplier_from_fng(fng):
-        if fng < 25:
-            return 1.5
-        elif fng < 50:
-            return 1.2
-        elif fng < 75:
-            return 1.0
-        else:
-            return 0.8
-
-    sl_multiplier_series = fng_values.apply(stop_loss_multiplier_from_fng)
-    stop_loss_threshold = adjusted_var.loc[fng_values.index] * sl_multiplier_series
-    triggered = full_returns_sl < stop_loss_threshold
-
     stop_loss_exposure = np.where(triggered, exposure_floor, dynamic_exposure)
-    stop_loss_exposure = pd.Series(stop_loss_exposure, index=full_returns_sl.index)
-    adjusted_returns_sl = full_returns_sl * stop_loss_exposure.shift(1)
-    cumulative_return_sl = (1 + adjusted_returns_sl).cumprod()
+    stop_loss_exposure = pd.Series(stop_loss_exposure, index=returns_aligned.index)
 
-    # Plot cumulative return
+    adjusted_returns = returns_aligned * stop_loss_exposure.shift(1)
+    cumulative_return = (1 + adjusted_returns).cumprod()
+
+    # 📈 Plot cumulative return
     st.markdown("### 📈 Portfolio Return with F&G-Based Stop-Loss")
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=cumulative_return_sl.index, y=cumulative_return_sl, name="With Stop-Loss (F&G Adjusted)"))
+    fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return, name="60/40 with Stop-Loss"))
     fig.update_layout(title="Indexed Portfolio Value", yaxis_title="Value", xaxis_title="Date")
     st.plotly_chart(fig, use_container_width=True)
 
-    # Trigger statistics table
+    # 📊 Table of stop-loss triggers by regime
     st.markdown("### 🧾 Stop-Loss Trigger Stats by Sentiment Regime")
 
     def classify_regime(fng):
-        if fng < 25:
-            return "Extreme Fear"
-        elif fng < 50:
-            return "Fear"
-        elif fng < 75:
-            return "Greed"
-        else:
-            return "Extreme Greed"
+        if fng < 25: return "Extreme Fear"
+        elif fng < 50: return "Fear"
+        elif fng < 75: return "Greed"
+        else: return "Extreme Greed"
 
     regime_series = fng_values.apply(classify_regime)
     trigger_df = pd.DataFrame({
