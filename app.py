@@ -971,9 +971,9 @@ with tab8:
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
     crisis_periods = {
-        "2008 Crash": ("2007-01-01", "2010-01-01"),
-        "COVID Crash": ("2019-01-01", "2022-01-01"),
-        "2022 Bear Market": ("2021-01-01", "2024-01-01")
+        "2008 Crash": ("2008-09-01", "2009-04-01"),
+        "COVID Crash": ("2020-02-01", "2020-07-01"),
+        "2022 Bear Market": ("2022-01-01", "2023-01-01")
     }
 
     spy = data["SPY"].pct_change()
