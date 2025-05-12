@@ -536,8 +536,7 @@ with tab5:
             st.warning("Could not retrieve or compute data for this ticker.")
 
 
-
- #---------------------------- TAB 6 ----------------------------------
+# ---------------------------- TAB 6 ----------------------------------
 with tab6:
     st.markdown("""
 ### 🧠 Distribution of SPY Returns with Historical, F&G, and Bullish Sentiment–Adjusted VaR:  
@@ -545,13 +544,13 @@ This section visualizes the **distribution of daily SPY returns** and overlays m
 
 🔹 **Historical VaR**: uses the percentile of past returns  
 🔹 **Parametric VaR**: assumes returns are normally distributed  
-🔹 **Monte Carlo**: simulates returns using a normal distribution  
-🔹 **F&G Adjusted VaR**: dynamically changes the confidence level α(t) based on the **Fear & Greed Index**  
-🔹 **Bullish Adjusted VaR**: dynamically changes α(t) based on the **percentage of bullish investors (AAII survey)**
+🔹 **Monte Carlo**: simulation of returns using historical stats  
+🔹 **F&G Adjusted VaR**: dynamically adjusts α(t) based on the **Fear & Greed Index**  
+🔹 **Bullish Adjusted VaR**: adjusts α(t) based on the **% of bullish investors (AAII survey)**
 
-These sentiment-based models allow VaR thresholds to adapt to investor emotion:  
-- In **fearful times**, VaR becomes more conservative  
-- In **bullish regimes**, risk tolerance is higher, and thresholds tighten
+These sentiment-based models allow risk thresholds to adapt to investor emotions:
+- In **fearful markets**, VaR becomes more conservative  
+- In **optimistic periods**, thresholds tighten with increased risk appetite
 """)
 
     investment = 1_000_000
@@ -583,20 +582,20 @@ These sentiment-based models allow VaR thresholds to adapt to investor emotion:
     st.markdown("### 📏 Select Rolling Window Length")
     window = st.slider("Rolling Window (days)", min_value=100, max_value=500, value=252, step=10)
 
-    # === Full series + F&G/Bullish sentiment alignment
+    # === Full series + sentiment alignment
     full_returns = data["SPY"].pct_change().dropna()
     fng_series = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
     bullish_series = clean_df.set_index("Date")["Bullish"].reindex(full_returns.index).fillna(method="ffill")
     full_returns = full_returns.loc[fng_series.index.intersection(bullish_series.index)]
 
-    # === Adjusted alphas
-    fng_alpha = 0.01 + ((100 - fng_series) / 100) * 0.09
+    # === Adjusted alpha (standardized: α(t) = 0.01 + sentiment × 0.09 / 100)
+    fng_alpha = 0.01 + (fng_series / 100) * 0.09
     fng_alpha = fng_alpha.clip(0.01, 0.2)
 
     bullish_alpha = 0.01 + (bullish_series / 100) * 0.09
     bullish_alpha = bullish_alpha.clip(0.01, 0.2)
 
-    # === Adjusted VaR/CVaR computation
+    # === Compute Adjusted VaR/CVaR
     adjusted_var = pd.Series(index=full_returns.index, dtype=float)
     adjusted_cvar = pd.Series(index=full_returns.index, dtype=float)
     bullish_var = pd.Series(index=full_returns.index, dtype=float)
@@ -691,7 +690,7 @@ These sentiment-based models allow VaR thresholds to adapt to investor emotion:
 ### 🧮 Adjusted VaR Formulas
 
 - **F&G Adjusted VaR**:
-  $$ \\alpha(t) = 0.01 + \\left( \\frac{100 - \\text{F\\&G}(t)}{100} \\right) \\cdot 0.09 $$
+  $$ \\alpha(t) = 0.01 + \\left( \\frac{\\text{F\\&G}(t)}{100} \\right) \\cdot 0.09 $$
 
 - **Bullish Adjusted VaR**:
   $$ \\alpha(t) = 0.01 + \\left( \\frac{\\text{Bullish}(t)}{100} \\right) \\cdot 0.09 $$
@@ -706,6 +705,169 @@ These sentiment-based models allow VaR thresholds to adapt to investor emotion:
     }, index=["% of Days"]).T
     st.dataframe(breach_df.round(2), use_container_width=True)
 
+# ---------------------------- TAB 7 ----------------------------------
+with tab7:
+    st.markdown("## ⚖️ F&G-Adjusted Stop-Loss with Bullish Sentiment Re-entry (60/40 Portfolio)")
+    st.markdown("""
+### 🧠 Strategy Overview
+
+This strategy dynamically reduces portfolio exposure during high-risk periods using:
+- **Value at Risk (VaR)**: 5% rolling quantile of recent 100-day returns
+- **Fear & Greed (F&G) Index**: Determines how aggressively to scale back exposure:
+  - Lower sentiment → higher stop-loss multiplier
+  - Higher sentiment → tighter thresholds
+
+When a return breach occurs (i.e., below the F&G-adjusted VaR), exposure drops to **30%**.
+It only returns to normal levels when:
+- Bullish sentiment rises above a user-defined threshold (default: 30%)
+- At least 3 quiet days have passed
+
+### 🔍 Interpretation of the Chart
+- The plot compares **indexed performance** of the raw 60/40 portfolio and the **strategy with stop-loss and bullish sentiment re-entry**
+- The strategy aims to **limit drawdowns** during downturns and re-enter at favorable sentiment conditions
+
+### 📟 Trigger Table
+- The second table breaks down how many stop-loss events were triggered per year and regime
+  (Extreme Fear, Fear, Greed, Extreme Greed)
+
+### 📋 Summary Table
+- This compares performance metrics:
+  - Return
+  - Volatility
+  - Conditional VaR (CVaR)
+  - Downside Deviation
+  - Max Drawdown
+
+The goal: **enhance downside protection** while participating in upside trends using a **sentiment-aware risk overlay**.
+""")
+
+
+    # Add adjustable start date selector
+    available_dates = data.index.intersection(fng_df.index)
+    default_start = available_dates[0].date()
+    selected_start = st.date_input("Select portfolio start date:", value=default_start, min_value=default_start, max_value=available_dates[-1].date())
+    selected_start = pd.to_datetime(selected_start)
+
+    exposure_floor = 0.3
+    exposure_ceiling = 1.0
+    bullish_threshold = st.slider("Minimum Bullish Sentiment to Re-enter Market (%)", 0, 100, 30)
+
+    spy = data["SPY"].pct_change()
+    tlt = data["TLT"].pct_change()
+    fng_series = fng_df["FNG_Index"]
+
+    common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
+    common_idx = common_idx[common_idx >= selected_start]  # Apply selected start date
+
+    spy = spy.loc[common_idx]
+    tlt = tlt.loc[common_idx]
+    fng_series = fng_series.loc[common_idx]
+    port_returns = (0.6 * spy + 0.4 * tlt).dropna()
+
+    var_series = port_returns.rolling(window=100).apply(lambda x: np.percentile(x, 5)).dropna()
+    common_idx = port_returns.index.intersection(var_series.index)
+    port_returns = port_returns.loc[common_idx]
+    var_series = var_series.loc[common_idx]
+    fng_series = fng_series.loc[common_idx]
+
+    def stop_loss_multiplier_from_fng(fng):
+        if fng < 25: return 1.5
+        elif fng < 50: return 1.2
+        elif fng < 75: return 1.0
+        else: return 0.8
+
+    sl_multiplier = fng_series.apply(stop_loss_multiplier_from_fng)
+    stop_loss_threshold = var_series * sl_multiplier
+    triggered = port_returns < stop_loss_threshold
+
+    bullish_series = clean_df.set_index("Date")["Bullish"].resample("D").ffill()
+    bullish_series = bullish_series.reindex(port_returns.index, method="ffill")
+
+    var_scaled = (var_series - var_series.min()) / (var_series.max() - var_series.min())
+    dynamic_exposure = exposure_ceiling - var_scaled * (exposure_ceiling - exposure_floor)
+    dynamic_exposure = dynamic_exposure.clip(exposure_floor, exposure_ceiling)
+
+    exposure_series = pd.Series(index=port_returns.index, dtype=float)
+    for i, date in enumerate(port_returns.index):
+        if i == 0:
+            exposure_series.iloc[i] = dynamic_exposure.iloc[i]
+        else:
+            if triggered.iloc[i]:
+                exposure_series.iloc[i] = exposure_floor
+            else:
+                if bullish_series.iloc[i] >= bullish_threshold:
+                    exposure_series.iloc[i] = dynamic_exposure.iloc[i]
+                else:
+                    exposure_series.iloc[i] = exposure_floor
+
+    adjusted_returns = port_returns * exposure_series.shift(1).fillna(exposure_ceiling)
+    cumulative_return = (1 + adjusted_returns).cumprod()
+    cumulative_no_sl = (1 + port_returns).cumprod()
+
+    st.markdown("### 📈 60/40 Portfolio: Raw vs Stop-Loss + Bullish Filter")
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=cumulative_no_sl.index, y=cumulative_no_sl / cumulative_no_sl.iloc[0], name="60/40 No Stop-Loss"))
+    fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return / cumulative_return.iloc[0], name="60/40 with SL + Bullish Re-entry"))
+    fig.update_layout(title="Indexed Portfolio Value", yaxis_title="Value", xaxis_title="Date")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("### 📟 Stop-Loss Trigger Stats by Sentiment Regime")
+
+    def classify_regime(fng):
+        if fng < 25: return "Extreme Fear"
+        elif fng < 50: return "Fear"
+        elif fng < 75: return "Greed"
+        else: return "Extreme Greed"
+
+    regime_series = fng_series.apply(classify_regime)
+    trigger_df = pd.DataFrame({
+        "Year": triggered.index.year,
+        "Triggered": triggered,
+        "Regime": regime_series
+    })
+
+    summary = (
+        trigger_df[trigger_df["Triggered"]]
+        .groupby(["Year", "Regime"])
+        .size()
+        .unstack(fill_value=0)
+    )
+
+    st.dataframe(summary)
+
+    st.markdown("### 📋 Strategy Summary Table")
+
+    def max_drawdown(cum):
+        roll_max = cum.cummax()
+        return (cum / roll_max - 1).min()
+
+    strat_r = adjusted_returns
+    naive_r = port_returns
+
+    stats_summary = pd.DataFrame({
+        "Return (%)": [
+            (cumulative_no_sl.iloc[-1] / cumulative_no_sl.iloc[0] - 1) * 100,
+            (cumulative_return.iloc[-1] / cumulative_return.iloc[0] - 1) * 100
+        ],
+        "Volatility (%)": [
+            naive_r.std() * np.sqrt(252) * 100,
+            strat_r.std() * np.sqrt(252) * 100
+        ],
+        "CVaR (95%) (%)": [
+            naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
+            strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100
+        ],
+        "Downside Dev. (%)": [
+            np.sqrt(np.mean(np.minimum(0, naive_r) ** 2)) * np.sqrt(252) * 100,
+            np.sqrt(np.mean(np.minimum(0, strat_r) ** 2)) * np.sqrt(252) * 100
+        ],
+        "Max Drawdown (%)": [
+            max_drawdown(cumulative_no_sl) * 100,
+            max_drawdown(cumulative_return) * 100
+        ]
+    }, index=["60/40 Only", "With SL + Bullish Re-entry"])
+
+    st.dataframe(stats_summary.round(2), use_container_width=True)
 
 # ---------------------------- TAB 8 ----------------------------------
 
