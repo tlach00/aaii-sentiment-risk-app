@@ -790,35 +790,33 @@ with tab7:
     cum_strategy = (1 + strategy_returns).cumprod()
     cum_naive = (1 + port_returns).cumprod()
 
-    # VIX-based strategy: reduce exposure when VIX spikes
     vix_exposure = vix.apply(lambda x: 0.3 if x > 0.02 else 1.0)
     vix_strategy_returns = port_returns * vix_exposure.shift(1).fillna(1.0)
     cum_vix_strategy = (1 + vix_strategy_returns).cumprod()
 
-    # === 6-Month Performance Chart ===
     st.markdown("### 📈 Last 6 Months: Indexed Portfolio Comparison")
 
-    # Align indexes across all cumulative return series
-    aligned_index = cum_strategy.index.intersection(cum_naive.index).intersection(cum_vix.index)
+    aligned_index = cum_strategy.index.intersection(cum_naive.index).intersection(cum_vix_strategy.index)
     last_6mo_start = aligned_index[-126]
     sub_index = aligned_index[aligned_index >= last_6mo_start]
+    start_idx = sub_index[0]
 
     fig_last6mo = go.Figure()
     fig_last6mo.add_trace(go.Scatter(
         x=sub_index,
-        y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
+        y=cum_naive.loc[sub_index] / cum_naive.loc[start_idx],
         name="60/40 Portfolio",
         line=dict(color="navy")
     ))
     fig_last6mo.add_trace(go.Scatter(
         x=sub_index,
-        y=cum_strategy.loc[sub_index] / cum_strategy.loc[sub_index[0]],
+        y=cum_strategy.loc[sub_index] / cum_strategy.loc[start_idx],
         name="With F&G + Bullish Stop-Loss",
         line=dict(color="skyblue")
     ))
     fig_last6mo.add_trace(go.Scatter(
         x=sub_index,
-        y=cum_vix.loc[sub_index] / cum_vix.loc[sub_index[0]],
+        y=cum_vix_strategy.loc[sub_index] / cum_vix_strategy.loc[start_idx],
         name="With VIX Strategy",
         line=dict(dash="dash", color="orange")
     ))
@@ -830,49 +828,45 @@ with tab7:
     )
     st.plotly_chart(fig_last6mo, use_container_width=True)
 
-        # Stats table
-        naive_r = port_returns.loc[start_idx:]
-        strat_r = strategy_returns.loc[start_idx:]
-        vix_r = vix_strategy_returns.loc[start_idx:]
+    naive_r = port_returns.loc[start_idx:]
+    strat_r = strategy_returns.loc[start_idx:]
+    vix_r = vix_strategy_returns.loc[start_idx:]
 
-        def max_drawdown(cum):
-            roll_max = cum.cummax()
-            drawdown = cum / roll_max - 1.0
-            return drawdown.min()
+    def max_drawdown(cum):
+        roll_max = cum.cummax()
+        drawdown = cum / roll_max - 1.0
+        return drawdown.min()
 
-        stats_6mo = pd.DataFrame({
-            "Return (%)": [
-                (cum_naive.loc[sub_index[-1]] / cum_naive.loc[start_idx] - 1) * 100,
-                (cum_strategy.loc[sub_index[-1]] / cum_strategy.loc[start_idx] - 1) * 100,
-                (cum_vix_strategy.loc[sub_index[-1]] / cum_vix_strategy.loc[start_idx] - 1) * 100
-            ],
-            "Volatility (%)": [
-                naive_r.std() * np.sqrt(252) * 100,
-                strat_r.std() * np.sqrt(252) * 100,
-                vix_r.std() * np.sqrt(252) * 100
-            ],
-            "CVaR (95%) (%)": [
-                naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
-                strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100,
-                vix_r[vix_r < np.percentile(vix_r, 5)].mean() * 100
-            ],
-            "Downside Dev. (%)": [
-                np.sqrt(np.mean(np.minimum(0, naive_r)**2)) * np.sqrt(252) * 100,
-                np.sqrt(np.mean(np.minimum(0, strat_r)**2)) * np.sqrt(252) * 100,
-                np.sqrt(np.mean(np.minimum(0, vix_r)**2)) * np.sqrt(252) * 100
-            ],
-            "Max Drawdown (%)": [
-                max_drawdown(cum_naive.loc[sub_index]) * 100,
-                max_drawdown(cum_strategy.loc[sub_index]) * 100,
-                max_drawdown(cum_vix_strategy.loc[sub_index]) * 100
-            ]
-        }, index=["60/40 Only", "With F&G Stop-Loss", "With VIX Strategy"])
+    stats_6mo = pd.DataFrame({
+        "Return (%)": [
+            (cum_naive.loc[sub_index[-1]] / cum_naive.loc[start_idx] - 1) * 100,
+            (cum_strategy.loc[sub_index[-1]] / cum_strategy.loc[start_idx] - 1) * 100,
+            (cum_vix_strategy.loc[sub_index[-1]] / cum_vix_strategy.loc[start_idx] - 1) * 100
+        ],
+        "Volatility (%)": [
+            naive_r.std() * np.sqrt(252) * 100,
+            strat_r.std() * np.sqrt(252) * 100,
+            vix_r.std() * np.sqrt(252) * 100
+        ],
+        "CVaR (95%) (%)": [
+            naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
+            strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100,
+            vix_r[vix_r < np.percentile(vix_r, 5)].mean() * 100
+        ],
+        "Downside Dev. (%)": [
+            np.sqrt(np.mean(np.minimum(0, naive_r)**2)) * np.sqrt(252) * 100,
+            np.sqrt(np.mean(np.minimum(0, strat_r)**2)) * np.sqrt(252) * 100,
+            np.sqrt(np.mean(np.minimum(0, vix_r)**2)) * np.sqrt(252) * 100
+        ],
+        "Max Drawdown (%)": [
+            max_drawdown(cum_naive.loc[sub_index]) * 100,
+            max_drawdown(cum_strategy.loc[sub_index]) * 100,
+            max_drawdown(cum_vix_strategy.loc[sub_index]) * 100
+        ]
+    }, index=["60/40 Only", "With F&G Stop-Loss", "With VIX Strategy"])
 
-        st.dataframe(stats_6mo.round(2))
-    except Exception as e:
-        st.warning(f"⚠️ Could not display 6-month comparison: {e}")
+    st.dataframe(stats_6mo.round(2))
 
-    # === Crisis Charts ===
     for label, (start, end) in crisis_periods.items():
         st.markdown(f"### 📉 {label}")
         try:
@@ -894,11 +888,9 @@ with tab7:
                 name="With VIX Strategy",
                 line=dict(dash="dash", color="orange")
             ))
-
             fig.update_layout(title=f"Performance Comparison During {label}", yaxis_title="Indexed Value", height=400)
             st.plotly_chart(fig, use_container_width=True)
 
-            # Return slices
             naive_r = port_returns.loc[start_idx:end_idx]
             strat_r = strategy_returns.loc[start_idx:end_idx]
             vix_r = vix_strategy_returns.loc[start_idx:end_idx]
@@ -934,8 +926,6 @@ with tab7:
             st.dataframe(stats.round(2))
         except Exception as e:
             st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
-
-
 # ---------------------------- TAB 8 ----------------------------------
 with tab8:
     st.markdown("## 📊 Full-Period Summary Metrics: F&G + Bullish Stop-Loss vs 60/40 Portfolio")
