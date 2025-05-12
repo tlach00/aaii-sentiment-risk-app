@@ -862,9 +862,9 @@ with tab8:
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
     crisis_periods = {
-        "2008 Crash": ("2007-01-01", "2010-01-01"),
-        "COVID Crash": ("2019-01-01", "2022-01-01"),
-        "2022 Bear Market": ("2021-01-01", "2024-01-01")
+        "2008 Crash": ("2008-09-01", "2009-04-01"),
+        "COVID Crash": ("2020-02-01", "2020-07-01"),
+        "2022 Bear Market": ("2022-01-01", "2023-01-01")
     }
 
     spy = data["SPY"].pct_change()
@@ -893,7 +893,7 @@ with tab8:
     threshold = var_series * sl_multiplier
     triggered = port_returns < threshold
 
-    min_bullish_to_reenter = 25
+    min_bullish_to_reenter = 40
 
     exposure = pd.Series(index=port_returns.index, dtype=float)
     exposure.iloc[0] = 1.0
@@ -915,8 +915,8 @@ with tab8:
 
     st.markdown("### 📅 Last 1-Year Strategy Performance")
     try:
-        last_year_start = port_returns.index[-252]
-        sub_index = cum_strategy.loc[last_year_start:].index
+        last_six_months_start = port_returns.index[-126]
+        sub_index = cum_strategy.loc[last_six_months_start:].index
 
         fig_1yr = go.Figure()
         fig_1yr.add_trace(go.Scatter(
@@ -929,10 +929,10 @@ with tab8:
             y=cum_strategy.loc[sub_index] / cum_strategy.loc[sub_index[0]],
             name="With F&G + Bullish Stop-Loss"
         ))
-        fig_1yr.update_layout(title="1-Year Indexed Performance", yaxis_title="Indexed Value", height=400)
+        fig_1yr.update_layout(title="6-Month Indexed Performance", yaxis_title="Indexed Value", height=400)
         st.plotly_chart(fig_1yr, use_container_width=True)
 
-        # ➕ Add 1-year stats comparison
+        # ➕ Add 6-month stats comparison
         naive_r_1yr = port_returns.loc[sub_index]
         strat_r_1yr = strategy_returns.loc[sub_index]
 
@@ -971,9 +971,9 @@ with tab8:
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
     crisis_periods = {
-        "2008 Crash": ("2008-09-01", "2009-04-01"),
-        "COVID Crash": ("2020-02-01", "2020-07-01"),
-        "2022 Bear Market": ("2022-01-01", "2023-01-01")
+        "2008 Crash": ("2007-01-01", "2010-01-01"),
+        "COVID Crash": ("2019-01-01", "2022-01-01"),
+        "2022 Bear Market": ("2021-01-01", "2024-01-01")
     }
 
     spy = data["SPY"].pct_change()
@@ -1066,3 +1066,4 @@ with tab8:
             st.dataframe(stats.round(2))
         except Exception as e:
             st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
+
