@@ -798,10 +798,13 @@ with tab7:
         fig.update_layout(title=f"Performance Comparison During {label}", yaxis_title="Indexed Value", height=400)
         st.plotly_chart(fig, use_container_width=True)
 
-        stats = pd.DataFrame({
-            "Return (%)": [
-                (cum_naive.loc[end] / cum_naive.loc[start] - 1) * 100,
-                (cum_strategy.loc[end] / cum_strategy.loc[start] - 1) * 100
-            ]
-        }, index=["60/40", "With Stop-Loss"])
-        st.dataframe(stats.round(2))
+        try:
+            stats = pd.DataFrame({
+                "Return (%)": [
+                    (cum_naive.loc[end] / cum_naive.loc[start] - 1) * 100,
+                    (cum_strategy.loc[end] / cum_strategy.loc[start] - 1) * 100
+                ]
+            }, index=["60/40", "With Stop-Loss"])
+            st.dataframe(stats.round(2))
+        except KeyError:
+            st.warning(f"⚠️ Return stats could not be computed for {label} — check if dates are in available data range.")
