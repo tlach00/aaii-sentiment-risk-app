@@ -243,9 +243,6 @@ with tab3:
     st.altair_chart(chart3, use_container_width=True)
 
 
-
-
-
 # ---------------------------- TAB 4 ----------------------------
 with tab4:
     import plotly.graph_objects as go
@@ -265,6 +262,19 @@ with tab4:
         7. **Junk Demand** – HYG/LQD returns
 
         All indicators are normalized (Z-score scaled to 0–100), then averaged.
+
+        ---
+        #### 🔁 Nonlinear α(t) Formula for VaR Adjustment:
+
+        To improve how risk reacts to sentiment extremes, we define a smooth nonlinear alpha:
+
+        $$
+        \\alpha(t) = 0.01 + \\frac{0.09}{1 + e^{(F\\&G(t) - 50)/10}}
+        $$
+
+        - α(t) ∈ [0.01, 0.10]
+        - Fear pushes α ↑ (more conservative risk)
+        - Greed pushes α ↓ (more risk-tolerant)
         """)
 
     col1, col2 = st.columns(2)
@@ -372,6 +382,32 @@ with tab4:
 
     st.plotly_chart(fig_fng, use_container_width=True)
 
+    # === Nonlinear alpha plot
+    st.markdown("### 🔄 Nonlinear Alpha Scaling Function")
+
+    def logistic_alpha(fng):
+        return 0.01 + 0.09 / (1 + np.exp((fng - 50) / 10))
+
+    fng_df["Alpha_Logistic"] = fng_df["FNG_Index"].apply(logistic_alpha)
+    fng_df["Alpha_Linear"] = 0.01 + (100 - fng_df["FNG_Index"]) / 100 * 0.09
+
+    fig_alpha = go.Figure()
+    fig_alpha.add_trace(go.Scatter(
+        x=fng_df.index, y=fng_df["Alpha_Logistic"],
+        name="α(t) Logistic", mode="lines", line=dict(color="purple")
+    ))
+    fig_alpha.add_trace(go.Scatter(
+        x=fng_df.index, y=fng_df["Alpha_Linear"],
+        name="α(t) Linear", mode="lines", line=dict(color="gray", dash="dot")
+    ))
+
+    fig_alpha.update_layout(
+        title="α(t) – Linear vs Logistic Scaling Over Time",
+        xaxis_title="Date", yaxis_title="α(t)",
+        height=400
+    )
+    st.plotly_chart(fig_alpha, use_container_width=True)
+
     # 📊 Distribution + stats below
     st.markdown("### 📊 Distribution of the F&G Index (2007–Today)")
     st.markdown("This histogram shows the distribution of the CNN-style Fear & Greed Index since 2007. Vertical lines mark key sentiment thresholds.")
@@ -416,6 +452,9 @@ with tab4:
         }
         st.markdown("#### 📋 Summary Stats")
         st.dataframe(pd.DataFrame(stats, index=["Value"]).T, use_container_width=True)
+
+
+
 # ---------------- tab 5 ----------------
 with tab5:
     import yfinance as yf
