@@ -691,7 +691,7 @@ with tab6:
     cum_naive = (1 + port_returns).cumprod()
 
     st.markdown("### 📅 Last 1-Year Strategy Performance")
-    with tab6:
+with tab6:
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
     # ... other setup code ...
