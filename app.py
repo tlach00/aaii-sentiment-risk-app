@@ -970,8 +970,10 @@ with tab8:
             quiet_days += 1
             if quiet_days >= 3 and bullish_series.iloc[i] >= min_bullish_to_reenter:
                 fng = fng_series.iloc[i]
-                if fng > 75:
-                    exposure.iloc[i] = 1.0
+                if fng > 85:
+                    exposure.iloc[i] = 1.2
+                elif fng > 75:
+                    exposure.iloc[i] = 1.1
                 elif fng > 50:
                     exposure.iloc[i] = 0.8
                 elif fng > 25:
