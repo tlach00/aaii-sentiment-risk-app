@@ -159,7 +159,7 @@ with tab2:
     }
     cols = st.columns(len(dates))
     for i, (label, idx) in enumerate(dates.items()):
-        val = clean_df["Bullish"].iloc[idx]*100
+        val = clean_df["Bullish"].iloc[idx]
         cols[i].metric(label, f"{val:.1f}%")
 
     try:
