@@ -174,13 +174,13 @@ with tab2:
     filtered_df = clean_df[(clean_df["Date"] >= start_date) & (clean_df["Date"] <= end_date)]
 
     st.markdown("### 🧠 Investor Sentiment Distribution")
-    stacked_data = filtered_df.melt(id_vars=["Date"], value_vars=["Bullish", "Neutral", "Bearish"], 
+    stacked_data = filtered_df.melt(id_vars=["Date"], value_vars=["Bearish", "Neutral", "Bullish"], 
                                      var_name="Sentiment", value_name="Percentage")
     base = alt.Chart(stacked_data).mark_bar().encode(
         x=alt.X('Date:T', title='Date'),
         y=alt.Y('Percentage:Q', stack='normalize', title="Proportion (%)"),
-        color=alt.Color('Sentiment:N', scale=alt.Scale(domain=["Bullish", "Neutral", "Bearish"], 
-                                                       range=["green", "gray", "red"]))
+        color=alt.Color('Sentiment:N', scale=alt.Scale(domain=["Bearish", "Neutral", "Bullish"], 
+                                                       range=["red", "gray", "green"]))
     ).properties(height=300)
     st.altair_chart(base, use_container_width=True)
 
@@ -188,11 +188,13 @@ with tab2:
     ma_window = st.slider("Select MA Window (weeks):", 1, 52, 52, key="tab2_ma")
     df_ma = filtered_df.copy()
     df_ma["Bullish_MA"] = df_ma["Bullish"].rolling(window=ma_window, min_periods=1).mean()
-    chart3 = alt.Chart(df_ma).mark_line(color='green').encode(
-        x=alt.X('Date:T'),
-        y=alt.Y('Bullish_MA:Q', title='Bullish Sentiment MA')
-    ).properties(height=300)
+    base_ma = alt.Chart(df_ma).encode(x='Date:T')
+    chart3 = alt.layer(
+        base_ma.mark_line(color='black').encode(y=alt.Y('SP500_Close:Q', title='S&P 500 Price')),
+        base_ma.mark_line(color='green').encode(y=alt.Y('Bullish_MA:Q', title='Bullish Sentiment MA'))
+    ).resolve_scale(y='independent').properties(height=300)
     st.altair_chart(chart3, use_container_width=True)
+
 
 
 
