@@ -423,8 +423,9 @@ with tab4:
         sample = returns.iloc[i - window:i]
         hist_alpha = 0.05
 
-        # 🔁 Nonlinear alpha from FNG
-        alpha = 0.01 + 0.09 / (1 + np.exp((fng_series.iloc[i] - 50) / 10))
+        # ✅ Improved nonlinear alpha using logistic transformation
+        alpha = 1 / (1 + np.exp(-(50 - fng_series.iloc[i]) / 7))
+        alpha = np.clip(alpha, 0.0001, 0.9999)  # avoid invalid percentile
 
         var_hist.append(np.percentile(sample, 100 * hist_alpha))
         cvar_hist.append(sample[sample < np.percentile(sample, 100 * hist_alpha)].mean())
@@ -449,7 +450,6 @@ with tab4:
         height=500
     )
     st.plotly_chart(fig_risk, use_container_width=True)
-
 
 
 # ---------------- tab 5 ----------------
