@@ -23,7 +23,6 @@ st.title(":bar_chart: AAII Sentiment & S&P 500 Dashboard")
 def load_raw_excel():
     return pd.read_excel("sentiment_data.xlsx", header=None)
 
-@st.cache_data
 def load_clean_data():
     df = pd.read_excel("sentiment_data.xlsx", skiprows=7, usecols="A:D,M", header=None)
     df.columns = ["Date", "Bullish", "Neutral", "Bearish", "SP500_Close"]
@@ -32,6 +31,12 @@ def load_clean_data():
     df = df.dropna(subset=["Date"])
     df = df.sort_values("Date")
     df["SP500_Return"] = df["SP500_Close"].pct_change() * 100
+
+    # Ensure all sentiment percentages are scaled properly
+    for col in ["Bullish", "Neutral", "Bearish"]:
+        if df[col].max() <= 1:
+            df[col] *= 100
+
     return df.dropna()
 
 raw_df = load_raw_excel()
@@ -130,7 +135,7 @@ with tab2:
 
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
-        value=latest_bullish*100,
+        value=latest_bullish,
         title={'text': "Bullish Sentiment (%)"},
         gauge={
             'axis': {'range': [0, 100]},
