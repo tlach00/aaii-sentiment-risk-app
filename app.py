@@ -660,16 +660,17 @@ with tab5:
 with tab6:
     st.markdown("## ⚖️ F&G-Adjusted Stop-Loss on a 60/40 Portfolio (SPY/TLT)")
 
-    # Exposure settings
     exposure_floor = 0.3
     exposure_ceiling = 1.0
 
-    # Fetch returns and F&G index
+    # Select re-entry strategy
+    reentry_mode = st.radio("Stop-Loss Re-entry Mode", ["Immediate Re-entry", "Delayed Re-entry (3 quiet days)"])
+
+    # Fetch and align returns
     spy = data["SPY"].pct_change()
     tlt = data["TLT"].pct_change()
     fng_series = fng_df["FNG_Index"]
 
-    # Align all time series
     common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
     spy = spy.loc[common_idx]
     tlt = tlt.loc[common_idx]
@@ -683,7 +684,7 @@ with tab6:
     var_series = var_series.loc[common_idx]
     fng_series = fng_series.loc[common_idx]
 
-    # Apply F&G-based multiplier
+    # F&G multipliers and stop-loss threshold
     def stop_loss_multiplier_from_fng(fng):
         if fng < 25: return 1.5
         elif fng < 50: return 1.2
@@ -694,38 +695,47 @@ with tab6:
     stop_loss_threshold = var_series * sl_multiplier
     triggered = port_returns < stop_loss_threshold
 
-    # Dynamic exposure scaling
+    # Dynamic exposure rule
     var_scaled = (var_series - var_series.min()) / (var_series.max() - var_series.min())
     dynamic_exposure = exposure_ceiling - var_scaled * (exposure_ceiling - exposure_floor)
     dynamic_exposure = dynamic_exposure.clip(exposure_floor, exposure_ceiling)
 
-    # Re-entry logic: next day reset to normal if not triggered
+    # Exposure logic with toggle
     exposure_series = pd.Series(index=port_returns.index, dtype=float)
-    for i, date in enumerate(port_returns.index):
-        if i == 0:
-            exposure_series.iloc[i] = dynamic_exposure.iloc[i]
-        else:
-            if triggered.iloc[i]:
-                exposure_series.iloc[i] = exposure_floor
-            else:
-                exposure_series.iloc[i] = dynamic_exposure.iloc[i]
 
-    # Shift exposure for real-world lag
+    if reentry_mode == "Immediate Re-entry":
+        for i, date in enumerate(port_returns.index):
+            if i == 0:
+                exposure_series.iloc[i] = dynamic_exposure.iloc[i]
+            else:
+                exposure_series.iloc[i] = exposure_floor if triggered.iloc[i] else dynamic_exposure.iloc[i]
+    else:
+        quiet_days = 0
+        for i, date in enumerate(port_returns.index):
+            if i == 0:
+                exposure_series.iloc[i] = dynamic_exposure.iloc[i]
+            else:
+                if triggered.iloc[i]:
+                    quiet_days = 0
+                    exposure_series.iloc[i] = exposure_floor
+                else:
+                    quiet_days += 1
+                    exposure_series.iloc[i] = dynamic_exposure.iloc[i] if quiet_days >= 3 else exposure_floor
+
+    # Apply lag to exposure
     adjusted_returns = port_returns * exposure_series.shift(1).fillna(exposure_ceiling)
     cumulative_return = (1 + adjusted_returns).cumprod()
-
-    # Raw 60/40 without stop-loss (same index)
     cumulative_no_sl = (1 + port_returns).cumprod()
 
-    # 📈 Plot
+    # Plot results
     st.markdown("### 📈 60/40 Portfolio: Raw vs F&G-Adjusted Stop-Loss")
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=cumulative_no_sl.index, y=cumulative_no_sl / cumulative_no_sl.iloc[0], name="60/40 No Stop-Loss"))
-    fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return / cumulative_return.iloc[0], name="60/40 with Stop-Loss"))
+    fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return / cumulative_return.iloc[0], name=f"60/40 with Stop-Loss ({reentry_mode})"))
     fig.update_layout(title="Indexed Portfolio Value", yaxis_title="Value", xaxis_title="Date")
     st.plotly_chart(fig, use_container_width=True)
 
-    # 📊 Trigger stats
+    # Stop-loss trigger stats
     st.markdown("### 🧾 Stop-Loss Trigger Stats by Sentiment Regime")
 
     def classify_regime(fng):
