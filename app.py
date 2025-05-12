@@ -83,7 +83,8 @@ def load_fng_data():
 fng_df, data = load_fng_data()
 
 # Tabs
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+    "📓Read me",
     "📁 Raw Excel Viewer",
     "📈 AAII Sentiment survey",
     "😱 CNN F&G replication", 
@@ -95,6 +96,32 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
 ])
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
+    st.markdown("## 🧭 App Introduction")
+
+    st.markdown("""
+    Over the past decade, markets have become increasingly sentiment-driven — shaped not only by fundamentals but by investor psychology, fear, greed, and narrative shifts.  
+    Volatility spikes, meme stock frenzies, and algorithmic reactivity have highlighted how emotions can overpower logic in the short term.
+
+    This dashboard was built to help bridge that gap between **traditional risk metrics** and **real-world investor behavior**.
+
+    **Specifically, the app integrates:**
+    - The **AAII Sentiment Survey** — a contrarian measure of retail investor mood
+    - A **CNN-style Fear & Greed Index replica**
+    - Tools to translate sentiment signals into **risk management frameworks**, including:
+      - Dynamic exposure scaling  
+      - VaR & CVaR adjustment  
+      - Stop-loss triggers
+
+    By combining these behavioral indicators with market data, the goal is to help you better understand:
+    - When risk may be **mispriced**
+    - When to **scale in or out** of exposure
+    - And how to build **adaptive strategies** that respond not just to volatility, but to **investor psychology**
+
+    Whether you're a portfolio manager, a quant, or simply a data-driven investor, this dashboard offers an interactive sandbox to explore how sentiment shapes performance.
+    """)
+
+# ---------------------------- TAB 2 ----------------------------------
+with tab2:
     st.header("📋 Filtered Data Table")
     min_date = clean_df["Date"].min().date()
     max_date = clean_df["Date"].max().date()
@@ -110,8 +137,8 @@ with tab1:
     st.dataframe(fng_df.tail(300), use_container_width=True, height=400)
 
 
-# ---------------------------- TAB 2 ----------------------------------
-with tab2:
+# ---------------------------- TAB 3 ----------------------------------
+with tab3:
     st.markdown("## :chart_with_upwards_trend: AAII Investor sentiment survey")
 
     # AAII summary block
@@ -219,8 +246,8 @@ with tab2:
 
 
 
-# ---------------------------- TAB 3 ----------------------------
-with tab3:
+# ---------------------------- TAB 4 ----------------------------
+with tab4:
     import plotly.graph_objects as go
 
     st.markdown("## 🧐 CNN-Style Fear & Greed Replication")
@@ -389,8 +416,8 @@ with tab3:
         }
         st.markdown("#### 📋 Summary Stats")
         st.dataframe(pd.DataFrame(stats, index=["Value"]).T, use_container_width=True)
-# ---------------- tab 4 ----------------
-with tab4:
+# ---------------- tab 5 ----------------
+with tab5:
     import yfinance as yf
     import pandas as pd
     import numpy as np
@@ -510,8 +537,8 @@ with tab4:
             st.warning("Could not retrieve or compute data for this ticker.")
 
 
-# ---------------------------- TAB 5 ----------------------------------
-with tab5:
+# ---------------------------- TAB 6 ----------------------------------
+with tab6:
     st.markdown("## 🧠 Comparison of VaR & CVaR Methods for the S&P 500 Portfolio")
 
     investment = 1_000_000
@@ -635,8 +662,8 @@ with tab5:
         }, index=["% of Days"]).T
         st.dataframe(breach_df.round(2), use_container_width=True)
 
-# ---------------------------- TAB 6 ----------------------------------
-with tab6:
+# ---------------------------- TAB 7 ----------------------------------
+with tab7:
     st.markdown("## ⚖️ F&G-Adjusted Stop-Loss with Bullish Sentiment Re-entry (60/40 Portfolio)")
 
     # Add adjustable start date selector
@@ -732,9 +759,9 @@ with tab6:
 
     st.dataframe(summary)
 
-# ---------------------------- TAB 7 ----------------------------------
+# ---------------------------- TAB 8 ----------------------------------
 
-with tab7:
+with tab8:
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
     crisis_periods = {
@@ -928,8 +955,8 @@ with tab7:
             st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
 
 
-# ---------------------------- TAB 8 ----------------------------------
-with tab8:
+# ---------------------------- TAB 9 ----------------------------------
+with tab9:
     st.markdown("## 📊 Full-Period Summary Metrics: Dynamic Weights + Dynamic Exposure")
 
     # 📘 Explanation block
