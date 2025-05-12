@@ -176,11 +176,12 @@ with tab2:
     st.markdown("### 🧠 Investor Sentiment Distribution")
     stacked_data = filtered_df.melt(id_vars=["Date"], value_vars=["Bearish", "Neutral", "Bullish"], 
                                      var_name="Sentiment", value_name="Percentage")
+    sentiment_order = ["Bearish", "Neutral", "Bullish"]
+    color_order = ["#f4aaaa", "#dddddd", "#c4e3cc"]  # lighter red, gray, green
     base = alt.Chart(stacked_data).mark_bar().encode(
         x=alt.X('Date:T', title='Date'),
         y=alt.Y('Percentage:Q', stack='normalize', title="Proportion (%)"),
-        color=alt.Color('Sentiment:N', scale=alt.Scale(domain=["Bearish", "Neutral", "Bullish"], 
-                                                       range=["red", "gray", "green"]))
+        color=alt.Color('Sentiment:N', scale=alt.Scale(domain=sentiment_order, range=color_order))
     ).properties(height=300)
     st.altair_chart(base, use_container_width=True)
 
@@ -194,6 +195,7 @@ with tab2:
         base_ma.mark_line(color='green').encode(y=alt.Y('Bullish_MA:Q', title='Bullish Sentiment MA'))
     ).resolve_scale(y='independent').properties(height=300)
     st.altair_chart(chart3, use_container_width=True)
+
 
 
 
