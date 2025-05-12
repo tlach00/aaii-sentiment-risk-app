@@ -1053,148 +1053,35 @@ with tab8:
             st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
 
 
-# ---------------------------- TAB 9 ----------------------------------
-with tab9:
-    st.markdown("## 📊 Full-Period Summary Metrics: Dynamic Weights + Dynamic Exposure")
+    # === Weight Allocation Over Time Plot
+    st.markdown("### 📊 Portfolio Allocation Between SPY and TLT Over Time")
 
-    # 📘 Explanation block
-    st.markdown("""
-    ### ⚙️ Strategy Description
+    weight_fig = go.Figure()
+    weight_fig.add_trace(go.Scatter(
+        x=w_spy.index,
+        y=w_spy,
+        name="SPY Weight",
+        mode="lines",
+        stackgroup="one",
+        line=dict(width=0.5),
+        fillcolor="rgba(0, 102, 204, 0.5)"
+    ))
+    weight_fig.add_trace(go.Scatter(
+        x=w_tlt.index,
+        y=w_tlt,
+        name="TLT Weight",
+        mode="lines",
+        stackgroup="one",
+        line=dict(width=0.5),
+        fillcolor="rgba(204, 204, 204, 0.6)"
+    ))
 
-    This version combines two layers of risk management:
-    - **Dynamic Weight Allocation**: SPY and TLT weights shift based on the Fear & Greed Index:
-        - **F&G < 25**: 30% SPY / 70% TLT (defensive)
-        - **25 ≤ F&G < 50**: 50% / 50%
-        - **50 ≤ F&G < 75**: 70% / 30%
-        - **F&G ≥ 75**: 85% / 15% (aggressive)
-    - **Dynamic Exposure Control**: Overall exposure to the portfolio is scaled down:
-        - When VaR is breached and F&G is low → exposure falls (e.g. 0.3–0.5×)
-        - Re-entry allowed when **bullish sentiment ≥ 40** for 3 quiet days
+    weight_fig.update_layout(
+        title="Investor Allocation to SPY vs TLT Over Time (Driven by F&G Index)",
+        yaxis=dict(title="Proportion", range=[0, 1]),
+        xaxis=dict(title="Date"),
+        height=300,
+        legend=dict(x=0.01, y=0.99)
+    )
 
-    This aims to preserve capital in volatile periods and boost return participation during greed regimes.
-    """)
-
-    # === Portfolio start date selector
-    min_date = pd.to_datetime("2007-01-01")
-    max_date = pd.to_datetime("today")
-    start_date = st.date_input("📅 Portfolio start date:", value=min_date, min_value=min_date, max_value=max_date)
-    start_date = pd.to_datetime(start_date)
-
-    # === Data
-    spy = data["SPY"].pct_change()
-    tlt = data["TLT"].pct_change()
-    fng_series = fng_df["FNG_Index"]
-    bullish_series = load_clean_data().set_index("Date")["Bullish"].reindex(spy.index).fillna(method="ffill")
-
-    common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
-    common_idx = common_idx[common_idx >= start_date]
-
-    spy = spy.loc[common_idx]
-    tlt = tlt.loc[common_idx]
-    fng_series = fng_series.loc[common_idx]
-    bullish_series = bullish_series.loc[common_idx]
-
-    # === Dynamic Weights
-    def get_weights(fng):
-        if fng < 25: return 0.3, 0.7
-        elif fng < 50: return 0.5, 0.5
-        elif fng < 75: return 0.7, 0.3
-        else: return 0.85, 0.15
-
-    weights = fng_series.apply(lambda x: pd.Series(get_weights(x), index=["w_spy", "w_tlt"]))
-    w_spy = weights["w_spy"]
-    w_tlt = weights["w_tlt"]
-
-    port_returns = (spy * w_spy + tlt * w_tlt).dropna()
-
-    # === Stop-loss threshold
-    var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
-    var_series = var_series.reindex(port_returns.index, method="ffill")
-    fng_series = fng_series.reindex(port_returns.index, method="ffill")
-
-    def stop_loss_multiplier(fng):
-        if fng < 25: return 1.5
-        elif fng < 50: return 1.2
-        elif fng < 75: return 1.0
-        else: return 0.8
-
-    sl_multiplier = fng_series.apply(stop_loss_multiplier)
-    threshold = var_series * sl_multiplier
-    triggered = port_returns < threshold
-
-    # === Exposure control with bullish re-entry
-    min_bullish = 40
-    exposure = pd.Series(index=port_returns.index, dtype=float)
-    exposure.iloc[0] = 1.0
-    quiet_days = 0
-    scaled_exposure = (threshold - threshold.min()) / (threshold.max() - threshold.min())
-    scaled_exposure = 1 - scaled_exposure  # invert so higher risk → lower exposure
-
-    for i in range(1, len(port_returns)):
-        if triggered.iloc[i]:
-            exposure.iloc[i] = scaled_exposure.iloc[i] * 0.7 + 0.3
-            quiet_days = 0
-        else:
-            quiet_days += 1
-            if quiet_days >= 3 and bullish_series.iloc[i] >= min_bullish:
-                exposure.iloc[i] = 1.0
-            else:
-                exposure.iloc[i] = exposure.iloc[i - 1]
-
-    # === Final strategy returns
-    strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
-    cum_strategy = (1 + strategy_returns).cumprod()
-
-    # === 60/40 benchmark
-    static_returns = (0.6 * spy + 0.4 * tlt).reindex(cum_strategy.index)
-    cum_static = (1 + static_returns).cumprod()
-
-    def max_drawdown(cum):
-        roll_max = cum.cummax()
-        return (cum / roll_max - 1).min()
-
-    sharpe_ratio = lambda r: (r.mean() / r.std()) * np.sqrt(252)
-
-    strat_r = strategy_returns
-    naive_r = static_returns
-
-    stats_all = pd.DataFrame({
-        "Return (%)": [
-            (cum_static.iloc[-1] / cum_static.iloc[0] - 1) * 100,
-            (cum_strategy.iloc[-1] / cum_strategy.iloc[0] - 1) * 100
-        ],
-        "Volatility (%)": [
-            naive_r.std() * np.sqrt(252) * 100,
-            strat_r.std() * np.sqrt(252) * 100
-        ],
-        "CVaR (95%) (%)": [
-            naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
-            strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100
-        ],
-        "Downside Dev. (%)": [
-            np.sqrt(np.mean(np.minimum(0, naive_r) ** 2)) * np.sqrt(252) * 100,
-            np.sqrt(np.mean(np.minimum(0, strat_r) ** 2)) * np.sqrt(252) * 100
-        ],
-        "Max Drawdown (%)": [
-            max_drawdown(cum_static) * 100,
-            max_drawdown(cum_strategy) * 100
-        ],
-        "Sharpe Ratio": [
-            sharpe_ratio(naive_r),
-            sharpe_ratio(strat_r)
-        ]
-    }, index=["60/40 Only", "F&G Dynamic Weights + SL"])
-
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        st.markdown(f"### 📈 Indexed Performance (Since {start_date.date()})")
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=cum_static.index, y=cum_static / cum_static.iloc[0], name="60/40 Portfolio", line=dict(color="navy")))
-        fig.add_trace(go.Scatter(x=cum_strategy.index, y=cum_strategy / cum_strategy.iloc[0], name="F&G Dyn. Strategy", line=dict(color="skyblue")))
-        fig.update_layout(title="Full Period Indexed Performance", yaxis_title="Indexed Value", height=450)
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col2:
-        st.markdown("### 📋 Summary Table")
-        st.dataframe(stats_all.round(2), use_container_width=True)
-
+    st.plotly_chart(weight_fig, use_container_width=True)
