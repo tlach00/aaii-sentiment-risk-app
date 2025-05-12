@@ -147,10 +147,10 @@ with tab2:
 
     st.subheader("🕰️ Historical Sentiment Snapshots")
     dates = {
-        "Previous Close": -1*100,
-        "1 Week Ago": -5*100,
-        "1 Month Ago": -21*100,
-        "1 Year Ago": -252*100
+        "Previous Close": -1,
+        "1 Week Ago": -5,
+        "1 Month Ago": -21,
+        "1 Year Ago": -252
     }
     cols = st.columns(len(dates))
     for i, (label, idx) in enumerate(dates.items()):
