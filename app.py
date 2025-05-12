@@ -584,13 +584,12 @@ This shows how **risk thresholds shift depending on method**, and how **sentimen
     st.markdown("### 📏 Select Rolling Window Length")
     window = st.slider("Rolling Window (days)", min_value=100, max_value=500, value=252, step=10)
 
-    # === F&G Adjusted Alpha (non-linear transformation)
+    # === F&G Adjusted Alpha (only sentiment)
     full_returns = data["SPY"].pct_change().dropna()
     fng_series = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
     full_returns = full_returns.loc[fng_series.index]
 
-    # Non-linear α(t) transformation using a logistic curve
-    fng_alpha = 0.01 + 0.09 / (1 + np.exp((fng_series - 50) / 10))
+    fng_alpha = 0.01 + ((100 - fng_series) / 100) * 0.09
     fng_alpha = fng_alpha.clip(0.01, 0.2)
 
     # === Compute Adjusted VaR & CVaR
@@ -675,9 +674,9 @@ By overlaying the S&P 500 price:
 """)
 
     st.markdown(r"""
-    $$ \alpha(t) = 0.01 + \frac{0.09}{1 + \exp\left(\frac{F\&G(t) - 50}{10}\right)} $$
+    $$ \alpha(t) = 0.01 + \left( \frac{100 - \text{F\&G}(t)}{100} \right) \cdot 0.09 $$
 
-    - Higher fear → higher α(t) → higher VaR  
+    - Higher fear → higher α(t) → higher VaR
     - Greedy market → α closer to 1% → lower VaR
     """)
 
@@ -691,6 +690,10 @@ By overlaying the S&P 500 price:
             "F&G Adj. VaR Breaches": (full_returns.loc[adjusted_var.index] < adjusted_var).mean() * 100,
         }, index=["% of Days"]).T
         st.dataframe(breach_df.round(2), use_container_width=True)
+
+
+
+
 
 # ---------------------------- TAB 7 ----------------------------------
 with tab7:
