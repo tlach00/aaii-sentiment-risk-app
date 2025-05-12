@@ -694,7 +694,7 @@ These sentiment-based models allow VaR thresholds to adapt to investor emotion:
   $$ \\alpha(t) = 0.01 + \\left( \\frac{100 - \\text{F\\&G}(t)}{100} \\right) \\cdot 0.09 $$
 
 - **Bullish Adjusted VaR**:
-  $$ \\alpha(t) = 0.01 + \\left( \\frac{100 - \\text{Bullish}(t)}{100} \\right) \\cdot 0.09 $$
+  $$ \\alpha(t) = 0.01 + \\left( \\frac{\\text{Bullish}(t)}{100} \\right) \\cdot 0.09 $$
 """)
 
     # === Breach Frequency
