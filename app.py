@@ -660,57 +660,65 @@ with tab5:
 with tab6:
     st.markdown("## ⚖️ F&G-Adjusted Stop-Loss on a 60/40 Portfolio (SPY/TLT)")
 
-    # Fixed exposure limits
+    # Exposure rules
     exposure_floor = 0.3
     exposure_ceiling = 1.0
 
-    # Get price and return data
-    spy = data["SPY"].pct_change().dropna()
-    tlt = data["TLT"].pct_change().dropna()
-    aligned_idx = spy.index.intersection(tlt.index).intersection(fng_df.index)
+    # Get daily returns
+    spy = data["SPY"].pct_change()
+    tlt = data["TLT"].pct_change()
+    fng_series = fng_df["FNG_Index"]
 
-    # Build 60/40 daily return series
-    port_returns = 0.6 * spy.loc[aligned_idx] + 0.4 * tlt.loc[aligned_idx]
-    fng_values = fng_df["FNG_Index"].loc[aligned_idx]
+    # Align all indices properly
+    idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
+    spy = spy.loc[idx]
+    tlt = tlt.loc[idx]
+    fng_series = fng_series.loc[idx]
 
-    # Historical rolling VaR for the 60/40 portfolio
-    window = 100
-    var_series = port_returns.rolling(window=window).apply(lambda x: np.percentile(x, 5)).dropna()
-    var_series = var_series.loc[fng_values.index]  # align index
+    # Build 60/40 portfolio returns
+    port_returns = 0.6 * spy + 0.4 * tlt
 
-    # F&G-based stop-loss multipliers
+    # Raw 60/40 cumulative return (no stop-loss)
+    cumulative_no_sl = (1 + port_returns).cumprod()
+
+    # Compute rolling VaR (historical 5%)
+    var_series = port_returns.rolling(window=100).apply(lambda x: np.percentile(x, 5)).dropna()
+    var_series = var_series.loc[idx.intersection(var_series.index)]
+    port_returns = port_returns.loc[var_series.index]
+    fng_series = fng_series.loc[var_series.index]
+
+    # Apply F&G-based multipliers
     def stop_loss_multiplier_from_fng(fng):
         if fng < 25: return 1.5
         elif fng < 50: return 1.2
         elif fng < 75: return 1.0
         else: return 0.8
 
-    sl_multiplier_series = fng_values.apply(stop_loss_multiplier_from_fng)
-    stop_loss_threshold = var_series * sl_multiplier_series
+    sl_multiplier = fng_series.apply(stop_loss_multiplier_from_fng)
+    stop_loss_threshold = var_series * sl_multiplier
+    triggered = port_returns < stop_loss_threshold
 
-    # Determine stop-loss triggers
-    returns_aligned = port_returns.loc[stop_loss_threshold.index]
-    triggered = returns_aligned < stop_loss_threshold
-
-    # Exposure series with stop-loss
+    # Exposure rules
     var_scaled = (var_series - var_series.min()) / (var_series.max() - var_series.min())
     dynamic_exposure = exposure_ceiling - var_scaled * (exposure_ceiling - exposure_floor)
     dynamic_exposure = dynamic_exposure.clip(exposure_floor, exposure_ceiling)
 
     stop_loss_exposure = np.where(triggered, exposure_floor, dynamic_exposure)
-    stop_loss_exposure = pd.Series(stop_loss_exposure, index=returns_aligned.index)
+    stop_loss_exposure = pd.Series(stop_loss_exposure, index=port_returns.index)
 
-    adjusted_returns = returns_aligned * stop_loss_exposure.shift(1)
+    # Adjusted returns
+    adjusted_returns = port_returns * stop_loss_exposure.shift(1)
     cumulative_return = (1 + adjusted_returns).cumprod()
 
-    # 📈 Plot cumulative return
-    st.markdown("### 📈 Portfolio Return with F&G-Based Stop-Loss")
+    # 📈 Plot both strategies
+    st.markdown("### 📈 Comparison: Raw 60/40 vs F&G-Stop-Loss Strategy")
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return, name="60/40 with Stop-Loss"))
-    fig.update_layout(title="Indexed Portfolio Value", yaxis_title="Value", xaxis_title="Date")
+    fig.add_trace(go.Scatter(x=cumulative_no_sl.index, y=cumulative_no_sl, name="60/40 No Stop-Loss"))
+    fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return, name="60/40 with F&G Stop-Loss"))
+    fig.update_layout(title="Indexed Portfolio Value", xaxis_title="Date", yaxis_title="Value")
     st.plotly_chart(fig, use_container_width=True)
 
-    # 📊 Table of stop-loss triggers by regime
+    # 📊 Table of triggers by regime
     st.markdown("### 🧾 Stop-Loss Trigger Stats by Sentiment Regime")
 
     def classify_regime(fng):
@@ -719,7 +727,7 @@ with tab6:
         elif fng < 75: return "Greed"
         else: return "Extreme Greed"
 
-    regime_series = fng_values.apply(classify_regime)
+    regime_series = fng_series.apply(classify_regime)
     trigger_df = pd.DataFrame({
         "Year": triggered.index.year,
         "Triggered": triggered,
