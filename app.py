@@ -747,21 +747,15 @@ with tab7:
     }
 
     spy = data["SPY"].pct_change()
-    tlt = data["TLT"].pct_change()
     fng_series = fng_df["FNG_Index"]
 
-    # Align dates
-    common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
+    common_idx = spy.dropna().index.intersection(fng_series.dropna().index)
     spy = spy.loc[common_idx]
-    tlt = tlt.loc[common_idx]
     fng_series = fng_series.loc[common_idx]
 
-    port_returns = (0.6 * spy + 0.4 * tlt)
-    var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
-
-    # Align var_series to port_returns
-    var_series = var_series.reindex(port_returns.index, method="ffill")
-    fng_series = fng_series.reindex(port_returns.index, method="ffill")
+    var_series = spy.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
+    var_series = var_series.reindex(spy.index, method="ffill")
+    fng_series = fng_series.reindex(spy.index, method="ffill")
 
     def stop_loss_multiplier(fng):
         if fng < 25: return 1.5
@@ -771,40 +765,39 @@ with tab7:
 
     sl_multiplier = fng_series.apply(stop_loss_multiplier)
     threshold = var_series * sl_multiplier
-    triggered = port_returns < threshold
+    triggered = spy < threshold
 
-    exposure = pd.Series(index=port_returns.index, dtype=float)
+    exposure = pd.Series(index=spy.index, dtype=float)
     exposure.iloc[0] = 1.0
-    for i in range(1, len(port_returns)):
-        date = port_returns.index[i]
+    for i in range(1, len(spy)):
+        date = spy.index[i]
         if triggered.iloc[i]:
-            exposure.iloc[i] = 0.3
+            exposure.iloc[i] = 0.0
         else:
             exposure.iloc[i] = 1.0
 
-    strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
+    strategy_returns = spy * exposure.shift(1).fillna(1.0)
     cum_strategy = (1 + strategy_returns).cumprod()
-    cum_naive = (1 + port_returns).cumprod()
+    cum_naive = (1 + spy).cumprod()
 
     for label, (start, end) in crisis_periods.items():
         st.markdown(f"### 📉 {label}")
-        sub_index = cum_strategy.loc[start:end].index
-
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=sub_index, y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
-                                 name="60/40 Portfolio"))
-        fig.add_trace(go.Scatter(x=sub_index, y=cum_strategy.loc[sub_index] / cum_strategy.loc[sub_index[0]],
-                                 name="F&G Stop-Loss Portfolio"))
-        fig.update_layout(title=f"Performance Comparison During {label}", yaxis_title="Indexed Value", height=400)
-        st.plotly_chart(fig, use_container_width=True)
-
         try:
+            sub_index = cum_strategy.loc[start:end].index
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=sub_index, y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
+                                     name="SPY Only"))
+            fig.add_trace(go.Scatter(x=sub_index, y=cum_strategy.loc[sub_index] / cum_strategy.loc[sub_index[0]],
+                                     name="With F&G Stop-Loss"))
+            fig.update_layout(title=f"Performance Comparison During {label}", yaxis_title="Indexed Value", height=400)
+            st.plotly_chart(fig, use_container_width=True)
+
             stats = pd.DataFrame({
                 "Return (%)": [
                     (cum_naive.loc[end] / cum_naive.loc[start] - 1) * 100,
                     (cum_strategy.loc[end] / cum_strategy.loc[start] - 1) * 100
                 ]
-            }, index=["60/40", "With Stop-Loss"])
+            }, index=["SPY Only", "With Stop-Loss"])
             st.dataframe(stats.round(2))
         except KeyError:
-            st.warning(f"⚠️ Return stats could not be computed for {label} — check if dates are in available data range.")
+            st.warning(f"⚠️ Skipping {label} — dates may be outside available data.")
