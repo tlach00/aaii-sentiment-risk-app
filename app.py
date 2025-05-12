@@ -101,7 +101,8 @@ with tab1:
 
     st.header("📊 Historical Data Behind CNN Fear & Greed Index")
     st.dataframe(fng_df.tail(300), use_container_width=True, height=400)
-# ---------------------------- TAB 2 ----------------------------------
+
+
 # ---------------------------- TAB 2 ----------------------------------
 with tab2:
     st.markdown("## :chart_with_upwards_trend: AAII Investor sentiment survey")
@@ -172,27 +173,16 @@ with tab2:
     end_date = pd.to_datetime(end_date)
     filtered_df = clean_df[(clean_df["Date"] >= start_date) & (clean_df["Date"] <= end_date)]
 
-    st.markdown("### 🧠 Investor Sentiment (Toggle Lines)")
-    col1, col2, col3 = st.columns(3)
-    show_bullish = col1.checkbox("🐂 Bullish", value=True)
-    show_neutral = col2.checkbox("≡ Neutral", value=True)
-    show_bearish = col3.checkbox("🐻 Bearish", value=True)
-
-    chart2 = alt.Chart(filtered_df).transform_fold(
-        ["Bullish", "Neutral", "Bearish"],
-        as_=["Sentiment", "Value"]
-    ).mark_line().encode(
-        x='Date:T',
-        y=alt.Y('Value:Q', title='Sentiment (%)'),
-        color=alt.Color('Sentiment:N', scale=alt.Scale(domain=["Bullish", "Neutral", "Bearish"],
+    st.markdown("### 🧠 Investor Sentiment Distribution")
+    stacked_data = filtered_df.melt(id_vars=["Date"], value_vars=["Bullish", "Neutral", "Bearish"], 
+                                     var_name="Sentiment", value_name="Percentage")
+    base = alt.Chart(stacked_data).mark_bar().encode(
+        x=alt.X('Date:T', title='Date'),
+        y=alt.Y('Percentage:Q', stack='normalize', title="Proportion (%)"),
+        color=alt.Color('Sentiment:N', scale=alt.Scale(domain=["Bullish", "Neutral", "Bearish"], 
                                                        range=["green", "gray", "red"]))
-    )
-    filters = []
-    if show_bullish: filters.append("Bullish")
-    if show_neutral: filters.append("Neutral")
-    if show_bearish: filters.append("Bearish")
-    chart2 = chart2.transform_filter(alt.FieldOneOfPredicate(field='Sentiment', oneOf=filters))
-    st.altair_chart(chart2, use_container_width=True)
+    ).properties(height=300)
+    st.altair_chart(base, use_container_width=True)
 
     st.markdown("### :chart_with_upwards_trend: Bullish Sentiment Moving Average")
     ma_window = st.slider("Select MA Window (weeks):", 1, 52, 52, key="tab2_ma")
