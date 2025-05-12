@@ -1058,40 +1058,31 @@ with tab8:
 with tab9:
     st.markdown("## 📊 Full-Period Summary Metrics: Dynamic Weights + Dynamic Exposure")
 
-    # 📘 Explanation block
     st.markdown("""
     ### ⚙️ Strategy Description
 
     This version combines two layers of risk management:
     - **Dynamic Weight Allocation**: SPY and TLT weights shift based on the Fear & Greed Index:
-        - **F&G < 25**: 30% SPY / 70% TLT (defensive)
+        - **F&G < 25**: 30% SPY / 70% TLT
         - **25 ≤ F&G < 50**: 50% / 50%
         - **50 ≤ F&G < 75**: 70% / 30%
-        - **F&G ≥ 75**: 85% / 15% (aggressive)
-    - **Dynamic Exposure Control**: Overall exposure to the portfolio is scaled down when risk is elevated:
-        - Exposure is reduced when returns breach an F&G-adjusted VaR
-        - Re-entry allowed after 3 quiet days if **bullish sentiment ≥ 40%**
+        - **F&G ≥ 75**: 85% / 15%
+    - **Dynamic Exposure Scaling**: Exposure reduces when risk increases based on an F&G-adjusted VaR.
+        - Re-entry allowed after 3 quiet days if **bullish sentiment ≥ 40%**.
     """)
 
-    # === Portfolio start date selector
+    # === Data & Preprocessing
     min_date = pd.to_datetime("2007-01-01")
-    max_date = pd.to_datetime("today")
-    start_date = st.date_input("📅 Portfolio start date:", value=min_date, min_value=min_date, max_value=max_date)
-    start_date = pd.to_datetime(start_date)
-
-    # === Data
+    start_date = pd.to_datetime(st.date_input("📅 Portfolio start date:", value=min_date, min_value=min_date))
+    
     spy = data["SPY"].pct_change()
     tlt = data["TLT"].pct_change()
     fng_series = fng_df["FNG_Index"]
     bullish_series = load_clean_data().set_index("Date")["Bullish"].reindex(spy.index).fillna(method="ffill")
 
-    common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
-    common_idx = common_idx[common_idx >= start_date]
-
-    spy = spy.loc[common_idx]
-    tlt = tlt.loc[common_idx]
-    fng_series = fng_series.loc[common_idx]
-    bullish_series = bullish_series.loc[common_idx]
+    idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
+    idx = idx[idx >= start_date]
+    spy, tlt, fng_series, bullish_series = [s.loc[idx] for s in (spy, tlt, fng_series, bullish_series)]
 
     # === Dynamic Weights
     def get_weights(fng):
@@ -1101,16 +1092,13 @@ with tab9:
         else: return 0.85, 0.15
 
     weights = fng_series.apply(lambda x: pd.Series(get_weights(x), index=["w_spy", "w_tlt"]))
-    w_spy = weights["w_spy"]
-    w_tlt = weights["w_tlt"]
+    w_spy, w_tlt = weights["w_spy"], weights["w_tlt"]
 
-    # === Portfolio returns
     port_returns = (spy * w_spy + tlt * w_tlt).dropna()
 
-    # === VaR-based stop-loss
+    # === F&G-adjusted VaR
     var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
     var_series = var_series.reindex(port_returns.index, method="ffill")
-    fng_series = fng_series.reindex(port_returns.index, method="ffill")
 
     def stop_loss_multiplier(fng):
         if fng < 25: return 1.5
@@ -1118,111 +1106,77 @@ with tab9:
         elif fng < 75: return 1.0
         else: return 0.8
 
-    sl_multiplier = fng_series.apply(stop_loss_multiplier)
-    threshold = var_series * sl_multiplier
+    threshold = var_series * fng_series.apply(stop_loss_multiplier)
     triggered = port_returns < threshold
 
-    # === Exposure control
-    min_bullish = 40
+    # === Dynamic Exposure Control
     exposure = pd.Series(index=port_returns.index, dtype=float)
     exposure.iloc[0] = 1.0
-    quiet_days = 0
-    scaled_exposure = (threshold - threshold.min()) / (threshold.max() - threshold.min())
-    scaled_exposure = 1 - scaled_exposure  # invert: high VaR → low exposure
+    quiet = 0
+    min_bullish = 40
+    scaled_exp = 1 - ((threshold - threshold.min()) / (threshold.max() - threshold.min()))
+    scaled_exp = scaled_exp * 0.7 + 0.3
 
     for i in range(1, len(port_returns)):
         if triggered.iloc[i]:
-            exposure.iloc[i] = scaled_exposure.iloc[i] * 0.7 + 0.3
-            quiet_days = 0
+            exposure.iloc[i] = scaled_exp.iloc[i]
+            quiet = 0
         else:
-            quiet_days += 1
-            if quiet_days >= 3 and bullish_series.iloc[i] >= min_bullish:
+            quiet += 1
+            if quiet >= 3 and bullish_series.iloc[i] >= min_bullish:
                 exposure.iloc[i] = 1.0
             else:
-                exposure.iloc[i] = exposure.iloc[i - 1]
+                exposure.iloc[i] = exposure.iloc[i-1]
 
-    # === Final strategy returns
     strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
     cum_strategy = (1 + strategy_returns).cumprod()
-
-    # === Benchmark
     static_returns = (0.6 * spy + 0.4 * tlt).reindex(cum_strategy.index)
     cum_static = (1 + static_returns).cumprod()
 
-    # === Risk Metrics
-    def max_drawdown(cum): return (cum / cum.cummax() - 1).min()
+    # === Plot 1: Full-period performance
+    st.markdown("### 📈 Full Period Indexed Performance")
+    fig_perf = go.Figure()
+    fig_perf.add_trace(go.Scatter(x=cum_static.index, y=cum_static / cum_static.iloc[0], name="60/40 Portfolio", line=dict(color="navy")))
+    fig_perf.add_trace(go.Scatter(x=cum_strategy.index, y=cum_strategy / cum_strategy.iloc[0], name="F&G Dyn. Strategy", line=dict(color="dodgerblue")))
+    fig_perf.update_layout(height=420, yaxis_title="Indexed Value", xaxis_title="Date")
+    st.plotly_chart(fig_perf, use_container_width=True)
+
+    # === Plot 2: SPY/TLT allocation distribution
+    st.markdown("### 📊 Dynamic SPY vs TLT Allocation")
+    fig_alloc = go.Figure()
+    fig_alloc.add_trace(go.Scatter(x=w_spy.index, y=w_spy, mode="lines", stackgroup="one", name="SPY Weight", line=dict(color="skyblue")))
+    fig_alloc.add_trace(go.Scatter(x=w_tlt.index, y=w_tlt, mode="lines", stackgroup="one", name="TLT Weight", line=dict(color="lightgray")))
+    fig_alloc.update_layout(height=420, yaxis_title="Portfolio Weight", xaxis_title="Date")
+    st.plotly_chart(fig_alloc, use_container_width=True)
+
+    # === Summary stats
+    def max_drawdown(c): return (c / c.cummax() - 1).min()
     sharpe_ratio = lambda r: (r.mean() / r.std()) * np.sqrt(252)
 
     strat_r = strategy_returns
     naive_r = static_returns
 
-    stats_all = pd.DataFrame({
+    stats = pd.DataFrame({
         "Return (%)": [
             (cum_static.iloc[-1] / cum_static.iloc[0] - 1) * 100,
             (cum_strategy.iloc[-1] / cum_strategy.iloc[0] - 1) * 100
         ],
-        "Volatility (%)": [
-            naive_r.std() * np.sqrt(252) * 100,
-            strat_r.std() * np.sqrt(252) * 100
-        ],
-        "CVaR (95%) (%)": [
-            naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
-            strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100
-        ],
-        "Downside Dev. (%)": [
-            np.sqrt(np.mean(np.minimum(0, naive_r) ** 2)) * np.sqrt(252) * 100,
-            np.sqrt(np.mean(np.minimum(0, strat_r) ** 2)) * np.sqrt(252) * 100
-        ],
-        "Max Drawdown (%)": [
-            max_drawdown(cum_static) * 100,
-            max_drawdown(cum_strategy) * 100
-        ],
-        "Sharpe Ratio": [
-            sharpe_ratio(naive_r),
-            sharpe_ratio(strat_r)
-        ]
-    }, index=["60/40 Only", "F&G Dynamic Weights + SL"])
+        "Volatility (%)": [naive_r.std(), strat_r.std()],
+        "CVaR (95%) (%)": [naive_r[naive_r < np.percentile(naive_r, 5)].mean(),
+                           strat_r[strat_r < np.percentile(strat_r, 5)].mean()],
+        "Downside Dev. (%)": [np.sqrt(np.mean(np.minimum(0, naive_r)**2)),
+                              np.sqrt(np.mean(np.minimum(0, strat_r)**2))],
+        "Max Drawdown (%)": [max_drawdown(cum_static), max_drawdown(cum_strategy)],
+        "Sharpe Ratio": [sharpe_ratio(naive_r), sharpe_ratio(strat_r)]
+    }, index=["60/40 Only", "F&G Dyn. Strategy"]) * 100
 
-    # === Graphs ===
-    st.markdown(f"### 📊 Dynamic Portfolio Behavior Since {start_date.date()}")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        fig_alloc = go.Figure()
-        fig_alloc.add_trace(go.Scatter(x=w_spy.index, y=w_spy, mode="lines", stackgroup="one", name="SPY Weight", line=dict(color="skyblue")))
-        fig_alloc.add_trace(go.Scatter(x=w_tlt.index, y=w_tlt, mode="lines", stackgroup="one", name="TLT Weight", line=dict(color="lightgray")))
-        fig_alloc.update_layout(title="🧠 SPY/TLT Weight Allocation Over Time", height=400, yaxis_title="Weight", xaxis_title="Date", showlegend=True)
-        st.plotly_chart(fig_alloc, use_container_width=True)
-
-    with col2:
-        fig_perf = go.Figure()
-        fig_perf.add_trace(go.Scatter(x=cum_static.index, y=cum_static / cum_static.iloc[0], name="60/40 Portfolio", line=dict(color="navy")))
-        fig_perf.add_trace(go.Scatter(x=cum_strategy.index, y=cum_strategy / cum_strategy.iloc[0], name="F&G Dyn. Strategy", line=dict(color="dodgerblue")))
-        fig_perf.update_layout(title="📈 Full Period Indexed Performance", height=400, yaxis_title="Indexed Value")
-        st.plotly_chart(fig_perf, use_container_width=True)
-
-    # === Radar chart for risk
-    import plotly.express as px
-    radar_df = stats_all[["Volatility (%)", "CVaR (95%) (%)", "Downside Dev. (%)", "Max Drawdown (%)"]]
-    fig_radar = px.line_polar(
-        radar_df.T,
-        r=radar_df.T.values,
-        theta=radar_df.T.index,
-        line_close=True,
-        labels={"variable": "Strategy"},
-        title="🕸️ Risk Profile Comparison (Lower = Better)"
-    )
-    fig_radar.update_traces(fill="toself")
-    st.plotly_chart(fig_radar, use_container_width=True)
-
-    # === Color-coded summary table
-    def highlight_risks(val, metric):
-        if metric in ["Volatility (%)", "CVaR (95%) (%)", "Downside Dev. (%)", "Max Drawdown (%)"]:
+    # === Highlight
+    def highlight(val, col):
+        if col in ["Volatility (%)", "CVaR (95%) (%)", "Downside Dev. (%)", "Max Drawdown (%)"]:
             return "background-color: #c6efce" if val < 10 else "background-color: #ffc7ce"
-        elif metric == "Sharpe Ratio":
+        elif col == "Sharpe Ratio":
             return "background-color: #c6efce" if val > 1 else "background-color: #ffc7ce"
         return ""
 
-    st.markdown("### 📋 Summary Risk Metrics Table")
-    styled = stats_all.style.apply(lambda x: [highlight_risks(v, x.index[i]) for i, v in enumerate(x)], axis=1)
-    st.dataframe(styled, use_container_width=True)
+    st.markdown("### 📋 Summary Table (Risk-Adjusted Performance)")
+    st.dataframe(stats.style.apply(lambda row: [highlight(val, row.index[i]) for i, val in enumerate(row)], axis=1), use_container_width=True)
