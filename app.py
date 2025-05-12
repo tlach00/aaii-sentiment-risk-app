@@ -539,7 +539,22 @@ with tab5:
 
 # ---------------------------- TAB 6 ----------------------------------
 with tab6:
-    st.markdown("## 🧠 Comparison of VaR & CVaR Methods for the S&P 500 Portfolio")
+    st.markdown("""
+### 🧠 What This Shows:  
+This histogram visualizes the **distribution of daily SPY returns** over the past 5 years.
+
+🔹 The bars represent how frequently specific return levels occurred.
+
+🔹 The vertical lines overlay different **Value-at-Risk (VaR)** and **Conditional VaR (CVaR)** methods:
+- **Historical VaR / CVaR**: Based purely on percentiles from past returns  
+- **Parametric (Normal)**: Assumes returns follow a normal distribution  
+- **Monte Carlo**: Simulates thousands of random returns based on observed mean and volatility  
+- **F&G-Adjusted**: Dynamically adjusts the risk threshold depending on sentiment:
+  - More fear → higher risk buffer
+  - More greed → tighter buffer
+
+This shows how **risk thresholds shift depending on method**, and how **sentiment-adjusted VaR can better reflect market emotions**.
+""")
 
     investment = 1_000_000
     confidence_level = 0.95
