@@ -858,7 +858,7 @@ with tab7:
 
 # ---------------------------- TAB 8 ----------------------------------
 with tab8:
-    st.markdown("## 🧨 F&G Stop-Loss Performance During Market Crises (60/40 SPY/TLT)2")
+    st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
     crisis_periods = {
         "2008 Crash 2": ("2007-01-01", "2010-01-01"),
@@ -869,11 +869,13 @@ with tab8:
     spy = data["SPY"].pct_change()
     tlt = data["TLT"].pct_change()
     fng_series = fng_df["FNG_Index"]
+    bullish_series = load_clean_data().set_index("Date")["Bullish"].reindex(spy.index).fillna(method="ffill")
 
     common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
     spy = spy.loc[common_idx]
     tlt = tlt.loc[common_idx]
     fng_series = fng_series.loc[common_idx]
+    bullish_series = bullish_series.loc[common_idx]
 
     port_returns = (0.6 * spy + 0.4 * tlt)
     var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
@@ -890,13 +892,21 @@ with tab8:
     threshold = var_series * sl_multiplier
     triggered = port_returns < threshold
 
+    min_bullish_to_reenter = 40
+
     exposure = pd.Series(index=port_returns.index, dtype=float)
     exposure.iloc[0] = 1.0
+    quiet_days = 0
     for i in range(1, len(port_returns)):
         if triggered.iloc[i]:
             exposure.iloc[i] = 0.3
+            quiet_days = 0
         else:
-            exposure.iloc[i] = 1.0
+            quiet_days += 1
+            if quiet_days >= 3 and bullish_series.iloc[i] >= min_bullish_to_reenter:
+                exposure.iloc[i] = 1.0
+            else:
+                exposure.iloc[i] = 0.3
 
     strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
     cum_strategy = (1 + strategy_returns).cumprod()
@@ -913,7 +923,7 @@ with tab8:
             fig.add_trace(go.Scatter(x=sub_index, y=cum_naive.loc[sub_index] / cum_naive.loc[start_idx],
                                      name="60/40 Portfolio"))
             fig.add_trace(go.Scatter(x=sub_index, y=cum_strategy.loc[sub_index] / cum_strategy.loc[start_idx],
-                                     name="With F&G Stop-Loss"))
+                                     name="With F&G + Bullish Stop-Loss"))
             fig.update_layout(title=f"Performance Comparison During {label}", yaxis_title="Indexed Value", height=400)
             st.plotly_chart(fig, use_container_width=True)
 
@@ -948,16 +958,3 @@ with tab8:
             st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
 
 
-
-    df_risk = pd.DataFrame(risk_data, index=["60/40 Only", "With Stop-Loss"]).T
-
-    fig, ax = plt.subplots(figsize=(12, 6))
-    df_risk.plot(kind="bar", ax=ax, color=["#4c72b0", "#dd8452"])
-    ax.set_title("Risk Metrics for SPY/TLT 60/40 Portfolio During Market Crises", fontsize=15)
-    ax.set_ylabel("Value (%)")
-    ax.legend(title="", loc="upper right")
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
-
-    st.markdown("### 📊 Risk Metrics Comparison Summary")
-    st.pyplot(fig)
