@@ -1068,11 +1068,9 @@ with tab9:
         - **25 ≤ F&G < 50**: 50% / 50%
         - **50 ≤ F&G < 75**: 70% / 30%
         - **F&G ≥ 75**: 85% / 15% (aggressive)
-    - **Dynamic Exposure Control**: Overall exposure to the portfolio is scaled down:
-        - When VaR is breached and F&G is low → exposure falls (e.g. 0.3–0.7×)
-        - Re-entry allowed when **bullish sentiment ≥ 40** for 3 quiet days
-
-    This aims to preserve capital in volatile periods and boost return participation during greed regimes.
+    - **Dynamic Exposure Control**: Overall exposure to the portfolio is scaled down when risk is elevated:
+        - Exposure is reduced when returns breach an F&G-adjusted VaR
+        - Re-entry allowed after 3 quiet days if **bullish sentiment ≥ 40%**
     """)
 
     # === Portfolio start date selector
@@ -1102,13 +1100,14 @@ with tab9:
         elif fng < 75: return 0.7, 0.3
         else: return 0.85, 0.15
 
-    weights_df = fng_series.apply(lambda x: pd.Series(get_weights(x), index=["w_spy", "w_tlt"]))
-    w_spy = weights_df["w_spy"]
-    w_tlt = weights_df["w_tlt"]
+    weights = fng_series.apply(lambda x: pd.Series(get_weights(x), index=["w_spy", "w_tlt"]))
+    w_spy = weights["w_spy"]
+    w_tlt = weights["w_tlt"]
 
+    # === Portfolio returns
     port_returns = (spy * w_spy + tlt * w_tlt).dropna()
 
-    # === Stop-loss threshold
+    # === VaR-based stop-loss
     var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
     var_series = var_series.reindex(port_returns.index, method="ffill")
     fng_series = fng_series.reindex(port_returns.index, method="ffill")
@@ -1123,13 +1122,13 @@ with tab9:
     threshold = var_series * sl_multiplier
     triggered = port_returns < threshold
 
-    # === Exposure control with bullish re-entry
+    # === Exposure control
     min_bullish = 40
     exposure = pd.Series(index=port_returns.index, dtype=float)
     exposure.iloc[0] = 1.0
     quiet_days = 0
     scaled_exposure = (threshold - threshold.min()) / (threshold.max() - threshold.min())
-    scaled_exposure = 1 - scaled_exposure  # invert so higher risk → lower exposure
+    scaled_exposure = 1 - scaled_exposure  # invert: high VaR → low exposure
 
     for i in range(1, len(port_returns)):
         if triggered.iloc[i]:
@@ -1146,14 +1145,12 @@ with tab9:
     strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
     cum_strategy = (1 + strategy_returns).cumprod()
 
-    # === 60/40 benchmark
+    # === Benchmark
     static_returns = (0.6 * spy + 0.4 * tlt).reindex(cum_strategy.index)
     cum_static = (1 + static_returns).cumprod()
 
-    def max_drawdown(cum):
-        roll_max = cum.cummax()
-        return (cum / roll_max - 1).min()
-
+    # === Risk Metrics
+    def max_drawdown(cum): return (cum / cum.cummax() - 1).min()
     sharpe_ratio = lambda r: (r.mean() / r.std()) * np.sqrt(252)
 
     strat_r = strategy_returns
@@ -1186,43 +1183,46 @@ with tab9:
         ]
     }, index=["60/40 Only", "F&G Dynamic Weights + SL"])
 
-    # === Allocation Area Chart (SPY vs TLT Weights)
-    st.markdown("### 🧮 Dynamic Allocation Over Time (SPY vs TLT Weights)")
+    # === Graphs ===
+    st.markdown(f"### 📊 Dynamic Portfolio Behavior Since {start_date.date()}")
 
-    fig_alloc = go.Figure()
-    fig_alloc.add_trace(go.Scatter(
-        x=w_spy.index,
-        y=w_spy,
-        name="SPY Weight",
-        mode="lines",
-        stackgroup="one",
-        fillcolor="rgba(0, 102, 204, 0.5)"
-    ))
-    fig_alloc.add_trace(go.Scatter(
-        x=w_tlt.index,
-        y=w_tlt,
-        name="TLT Weight",
-        mode="lines",
-        stackgroup="one",
-        fillcolor="rgba(192,192,192,0.5)"
-    ))
-    fig_alloc.update_layout(
-        height=450,
-        yaxis_title="Allocation (%)",
-        xaxis_title="Date",
-        title="Dynamic Portfolio Allocation Between SPY & TLT",
-        showlegend=True
+    col1, col2 = st.columns(2)
+    with col1:
+        fig_alloc = go.Figure()
+        fig_alloc.add_trace(go.Scatter(x=w_spy.index, y=w_spy, mode="lines", stackgroup="one", name="SPY Weight", line=dict(color="skyblue")))
+        fig_alloc.add_trace(go.Scatter(x=w_tlt.index, y=w_tlt, mode="lines", stackgroup="one", name="TLT Weight", line=dict(color="lightgray")))
+        fig_alloc.update_layout(title="🧠 SPY/TLT Weight Allocation Over Time", height=400, yaxis_title="Weight", xaxis_title="Date", showlegend=True)
+        st.plotly_chart(fig_alloc, use_container_width=True)
+
+    with col2:
+        fig_perf = go.Figure()
+        fig_perf.add_trace(go.Scatter(x=cum_static.index, y=cum_static / cum_static.iloc[0], name="60/40 Portfolio", line=dict(color="navy")))
+        fig_perf.add_trace(go.Scatter(x=cum_strategy.index, y=cum_strategy / cum_strategy.iloc[0], name="F&G Dyn. Strategy", line=dict(color="dodgerblue")))
+        fig_perf.update_layout(title="📈 Full Period Indexed Performance", height=400, yaxis_title="Indexed Value")
+        st.plotly_chart(fig_perf, use_container_width=True)
+
+    # === Radar chart for risk
+    import plotly.express as px
+    radar_df = stats_all[["Volatility (%)", "CVaR (95%) (%)", "Downside Dev. (%)", "Max Drawdown (%)"]]
+    fig_radar = px.line_polar(
+        radar_df.T,
+        r=radar_df.T.values,
+        theta=radar_df.T.index,
+        line_close=True,
+        labels={"variable": "Strategy"},
+        title="🕸️ Risk Profile Comparison (Lower = Better)"
     )
-    st.plotly_chart(fig_alloc, use_container_width=True)
+    fig_radar.update_traces(fill="toself")
+    st.plotly_chart(fig_radar, use_container_width=True)
 
-    # === Performance Chart
-    st.markdown(f"### 📈 Indexed Performance (Since {start_date.date()})")
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=cum_static.index, y=cum_static / cum_static.iloc[0], name="60/40 Portfolio", line=dict(color="navy")))
-    fig.add_trace(go.Scatter(x=cum_strategy.index, y=cum_strategy / cum_strategy.iloc[0], name="F&G Dyn. Strategy", line=dict(color="skyblue")))
-    fig.update_layout(title="Full Period Indexed Performance", yaxis_title="Indexed Value", height=450)
-    st.plotly_chart(fig, use_container_width=True)
+    # === Color-coded summary table
+    def highlight_risks(val, metric):
+        if metric in ["Volatility (%)", "CVaR (95%) (%)", "Downside Dev. (%)", "Max Drawdown (%)"]:
+            return "background-color: #c6efce" if val < 10 else "background-color: #ffc7ce"
+        elif metric == "Sharpe Ratio":
+            return "background-color: #c6efce" if val > 1 else "background-color: #ffc7ce"
+        return ""
 
-    # === Final Table
-    st.markdown("### 📋 Summary Table")
-    st.dataframe(stats_all.round(2), use_container_width=True)
+    st.markdown("### 📋 Summary Risk Metrics Table")
+    styled = stats_all.style.apply(lambda x: [highlight_risks(v, x.index[i]) for i, v in enumerate(x)], axis=1)
+    st.dataframe(styled, use_container_width=True)
