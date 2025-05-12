@@ -537,108 +537,22 @@ with tab5:
 
 
 
-
 # ---------------------------- TAB 6 ----------------------------------
 with tab6:
     st.markdown("""
-### 🧠 Distribution of SPY Returns with Historical, F&G-Adjusted & Bullish-Adjusted VaR:  
-This histogram visualizes the **distribution of daily SPY returns** over the past 5 years.
+### 🧠 Distribution of SPY Returns with Historical, F&G, and Bullish Sentiment–Adjusted VaR:  
+This section visualizes the **distribution of daily SPY returns** and overlays multiple **Value-at-Risk (VaR)** and **Conditional VaR (CVaR)** calculations:
 
-🔹 The bars show how often specific return levels occurred.
+🔹 **Historical VaR**: uses the percentile of past returns  
+🔹 **Parametric VaR**: assumes returns are normally distributed  
+🔹 **Monte Carlo**: simulates returns using a normal distribution  
+🔹 **F&G Adjusted VaR**: dynamically changes the confidence level α(t) based on the **Fear & Greed Index**  
+🔹 **Bullish Adjusted VaR**: dynamically changes α(t) based on the **percentage of bullish investors (AAII survey)**
 
-🔹 Vertical lines indicate risk thresholds based on different VaR/CVaR methods:
-- **Historical / Parametric / Monte Carlo**
-- **F&G-Adjusted**: Alpha increases with fear
-- **Bullish-Adjusted**: Alpha increases with bullish sentiment (contrarian logic)
-
-This helps you assess how market emotions (greed/fear) shift risk assessments.
+These sentiment-based models allow VaR thresholds to adapt to investor emotion:  
+- In **fearful times**, VaR becomes more conservative  
+- In **bullish regimes**, risk tolerance is higher, and thresholds tighten
 """)
-
-    investment = 1_000_000
-    confidence_level = 0.95
-    alpha = 1 - confidence_level
-    lookback_days = 252 * 5
-
-    spy_prices = data["SPY"].dropna()
-    spy_returns = spy_prices.pct_change().dropna()
-    spy_returns = spy_returns[-lookback_days:]
-
-    # === Static VaR & CVaR
-    sorted_returns = np.sort(spy_returns.values)
-    var_hist = np.percentile(sorted_returns, alpha * 100)
-    cvar_hist = sorted_returns[sorted_returns <= var_hist].mean()
-
-    mu = spy_returns.mean()
-    sigma = spy_returns.std()
-    from scipy.stats import norm
-    var_param = norm.ppf(alpha, mu, sigma)
-    cvar_param = mu - sigma * norm.pdf(norm.ppf(alpha)) / alpha
-
-    np.random.seed(42)
-    sim_returns = np.random.normal(mu, sigma, 100000)
-    var_mc = np.percentile(sim_returns, alpha * 100)
-    cvar_mc = sim_returns[sim_returns <= var_mc].mean()
-
-    # === Rolling Window Length
-    st.markdown("### 📏 Select Rolling Window Length")
-    window = st.slider("Rolling Window (days)", min_value=100, max_value=500, value=252, step=10)
-
-    # === Data alignment
-    full_returns = data["SPY"].pct_change().dropna()
-    fng_series = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
-    bullish_series = clean_df.set_index("Date")["Bullish"].reindex(full_returns.index).dropna()
-    common_idx = full_returns.index.intersection(fng_series.index).intersection(bullish_series.index)
-    full_returns = full_returns.loc[common_idx]
-    fng_series = fng_series.loc[common_idx]
-    bullish_series = bullish_series.loc[common_idx]
-
-    # === Adjusted alphas
-    fng_alpha = 0.01 + ((100 - fng_series) / 100) * 0.09
-    fng_alpha = fng_alpha.clip(0.01, 0.2)
-
-    bullish_alpha = 0.01 + (bullish_series / 100) * 0.09
-    bullish_alpha = bullish_alpha.clip(0.01, 0.2)
-
-    # === Compute Adjusted VaR & CVaR
-    adjusted_var = pd.Series(index=full_returns.index, dtype=float)
-    adjusted_cvar = pd.Series(index=full_returns.index, dtype=float)
-    bullish_var = pd.Series(index=full_returns.index, dtype=float)
-    bullish_cvar = pd.Series(index=full_returns.index, dtype=float)
-
-    for date in full_returns.index[window:]:
-        past = full_returns.loc[:date].iloc[-window:]
-        # F&G-based
-        v1 = np.percentile(past, fng_alpha.loc[date] * 100)
-        cv1 = past[past <= v1].mean()
-        adjusted_var.loc[date] = v1
-        adjusted_cvar.loc[date] = cv1
-        # Bullish-based
-        v2 = np.percentile(past, bullish_alpha.loc[date] * 100)
-        cv2 = past[past <= v2].mean()
-        bullish_var.loc[date] = v2
-        bullish_cvar.loc[date] = cv2
-
-    # === Rolling Historical VaR/CVaR
-    rolling_var = full_returns.rolling(window).quantile(alpha)
-    rolling_cvar = full_returns.rolling(window).apply(lambda x: x[x <= x.quantile(alpha)].mean(), raw=False)
-
-    # === Histogram
-    latest_adj_var = adjusted_var.dropna().iloc[-1]
-    latest_adj_cvar = adjusted_cvar.dropna().iloc[-1]
-    latest_bull_var = bullish_var.dropna().iloc[-1]
-    latest_bull_cvar = bullish_cvar.dropna().iloc[-1]
-
-    fig = go.Figure()
-    fig.add_trace(go.Histogram(x=spy_returns * 100, nbinsx=100, name="SPY Returns", marker_color="#cce5ff", opacity=0.75))
-    fig.add_trace(go.Scatter(x=[var_hist * 100]*2, y=[0, 100], name="VaR (Historical)", line=dict(color="#66b3ff")))
-    fig.add_trace(go.Scatter(x=[var_param * 100]*2, y=[0, 100], name="VaR (Parametric)", line=dict(color="green", dash="dash")))
-    fig.add_trace(go.Scatter(x=[var_mc * 100]*2, y=[0, 100], name="VaR (Monte Carlo)", line=dict(color="orange", dash="dot")))
-    fig.add_trace(go.Scatter(x=[cvar_hist * 100]*2, y=[0, 100], name="CVaR (Historical)", line=dict(color="#004080", dash="dot")))
-    fig.add_trace(go.Scatter(x=[cvar_param * 100]*2, y=[0, 100], name="CVaR (Parametric)", line=dict(color="darkgreen", dash="dot")))
-    fig.add_trace(go.Scatter(x=[cvar_mc * 100]*2, y=[0, 100], name="CVaR (Monte Carlo)", line=dict(color="darkorange", dash="dot")))
-    fig.add_trace(go.Scatter(x=[latest_adj_var * 100]*2, y=[0, 100], name="F&G Adjusted VaR", line=dict(color="#ff6666", dash="dot")))
-    fig.add_trace(go.Scatter(x=[latest_adj_cvar * 100]*2, y=[0, 100], name="F&G Adjusted CVaR", line=dict(color="#800000", dash="dot")))
-    fig.add_trace(go.Scatter(x=[latest_bull_var * 100]*2, y=[0, 100], name="Bullish Adjusted VaR", line=dict(color="purple",
 
 # ---------------------------- TAB 7 ----------------------------------
 with tab7:
