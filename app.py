@@ -795,37 +795,39 @@ with tab7:
     cum_vix_strategy = (1 + vix_strategy_returns).cumprod()
 
     # === 6-Month Performance Chart ===
-    st.markdown("### ⏱️ Last 6-Month Strategy Comparison")
+    st.markdown("### 📈 Last 6 Months: Indexed Portfolio Comparison")
 
-    try:
-        last_6mo_start = port_returns.index[-126]
-        sub_index = cum_strategy.loc[last_6mo_start:].index
-        start_idx = sub_index[0]
+    # Align indexes across all cumulative return series
+    aligned_index = cum_strategy.index.intersection(cum_naive.index).intersection(cum_vix.index)
+    last_6mo_start = aligned_index[-126]
+    sub_index = aligned_index[aligned_index >= last_6mo_start]
 
-        fig_6mo = go.Figure()
-        fig_6mo.add_trace(go.Scatter(
-            x=sub_index,
-            y=cum_naive.loc[sub_index] / cum_naive.loc[start_idx],
-            name="60/40 Portfolio"
-        ))
-        fig_6mo.add_trace(go.Scatter(
-            x=sub_index,
-            y=cum_strategy.loc[sub_index] / cum_strategy.loc[start_idx],
-            name="With F&G + Bullish Stop-Loss"
-        ))
-        fig_6mo.add_trace(go.Scatter(
-            x=sub_index,
-            y=cum_vix_strategy.loc[sub_index] / cum_vix_strategy.loc[start_idx],
-            name="With VIX Strategy",
-            line=dict(dash="dash", color="orange")
-        ))
-
-        fig_6mo.update_layout(
-            title="Last 6 Months: Indexed Portfolio Comparison",
-            yaxis_title="Indexed Value",
-            height=400
-        )
-        st.plotly_chart(fig_6mo, use_container_width=True)
+    fig_last6mo = go.Figure()
+    fig_last6mo.add_trace(go.Scatter(
+        x=sub_index,
+        y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
+        name="60/40 Portfolio",
+        line=dict(color="navy")
+    ))
+    fig_last6mo.add_trace(go.Scatter(
+        x=sub_index,
+        y=cum_strategy.loc[sub_index] / cum_strategy.loc[sub_index[0]],
+        name="With F&G + Bullish Stop-Loss",
+        line=dict(color="skyblue")
+    ))
+    fig_last6mo.add_trace(go.Scatter(
+        x=sub_index,
+        y=cum_vix.loc[sub_index] / cum_vix.loc[sub_index[0]],
+        name="With VIX Strategy",
+        line=dict(dash="dash", color="orange")
+    ))
+    fig_last6mo.update_layout(
+        title="Last 6 Months: Indexed Portfolio Comparison",
+        yaxis_title="Indexed Value",
+        height=400,
+        legend=dict(x=0.01, y=0.99)
+    )
+    st.plotly_chart(fig_last6mo, use_container_width=True)
 
         # Stats table
         naive_r = port_returns.loc[start_idx:]
