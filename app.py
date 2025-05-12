@@ -737,7 +737,7 @@ with tab6:
     st.dataframe(summary)
 
 # ---------------------------- TAB 7 ----------------------------------
-with st.container():
+with tab7:
     st.markdown("## 🧨 F&G Stop-Loss Performance During Market Crises")
 
     crisis_periods = {
@@ -749,15 +749,19 @@ with st.container():
     spy = data["SPY"].pct_change()
     tlt = data["TLT"].pct_change()
     fng_series = fng_df["FNG_Index"]
+
+    # Align dates
     common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
     spy = spy.loc[common_idx]
     tlt = tlt.loc[common_idx]
     fng_series = fng_series.loc[common_idx]
 
-    port_returns = (0.6 * spy + 0.4 * tlt).dropna()
+    port_returns = (0.6 * spy + 0.4 * tlt)
     var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
-    var_series = var_series.loc[port_returns.index]
-    fng_series = fng_series.loc[port_returns.index]
+
+    # Align var_series to port_returns
+    var_series = var_series.reindex(port_returns.index, method="ffill")
+    fng_series = fng_series.reindex(port_returns.index, method="ffill")
 
     def stop_loss_multiplier(fng):
         if fng < 25: return 1.5
