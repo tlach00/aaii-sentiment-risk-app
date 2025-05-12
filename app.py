@@ -918,34 +918,18 @@ with tab8:
         last_six_months_start = port_returns.index[-126]
         sub_index = cum_strategy.loc[last_six_months_start:].index
 
-        vix = data['^VIX'].reindex(sub_index).fillna(method='ffill')
-fig_1yr = go.Figure()
+        fig_1yr = go.Figure()
         fig_1yr.add_trace(go.Scatter(
-    x=sub_index,
-    y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
-    name="60/40 Portfolio"
-))
-fig_1yr.add_trace(go.Scatter(
-    x=sub_index,
-    y=vix / vix.iloc[0],
-    name="VIX (Indexed)",
-    yaxis="y2",
-    line=dict(dash="dot", color="gray")
-))
+            x=sub_index,
+            y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
+            name="60/40 Portfolio"
+        ))
         fig_1yr.add_trace(go.Scatter(
             x=sub_index,
             y=cum_strategy.loc[sub_index] / cum_strategy.loc[sub_index[0]],
             name="With F&G + Bullish Stop-Loss"
         ))
-        fig_1yr.update_layout(
-    title="6-Month Indexed Performance",
-    yaxis=dict(title="Portfolio Indexed Value"),
-    yaxis2=dict(title="VIX Indexed Value", overlaying="y", side="right", showgrid=False),
-    height=400,
-    shapes=[
-    dict(type="line", x0=sub_index[0], x1=sub_index[0], yref="paper", y0=0, y1=1, line=dict(color="red", dash="dot")),
-    dict(type="line", x0=sub_index[-1], x1=sub_index[-1], yref="paper", y0=0, y1=1, line=dict(color="red", dash="dot"))
-]
+        fig_1yr.update_layout(title="6-Month Indexed Performance", yaxis_title="Indexed Value", height=400)
         st.plotly_chart(fig_1yr, use_container_width=True)
 
         # ➕ Add 6-month stats comparison
