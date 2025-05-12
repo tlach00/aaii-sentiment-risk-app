@@ -89,7 +89,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "😱 CNN F&G replication", 
     "👻 Stock F&G", 
     "📟 F&G in Risk Management",
-    "⚖️ Dynamic Exposure Scaling & Stop-Loss Triggers"
+    "⚖️ Dynamic Exposure Scaling & Stop-Loss Triggers",
     "🧨 F&G Stop-Loss"
 ])
 # ---------------------------- TAB 1 ----------------------------------
