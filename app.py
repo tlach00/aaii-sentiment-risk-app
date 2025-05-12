@@ -245,91 +245,210 @@ with tab3:
 
 # ---------------------------- TAB 4 ----------------------------
 with tab4:
-    st.markdown("## 🧮 F&G Adjusted VaR Formula")
+    import plotly.graph_objects as go
+    import numpy as np
 
-    st.markdown("""
-    This time-series plot compares rolling VaR/CVaR estimates against the **indexed S&P 500 price**.
+    st.markdown("## 🧐 CNN-Style Fear & Greed Replication")
 
-    There are two types of risk estimates:
-    - **Traditional (Historical)**: Fixed confidence level (e.g. 95%) applied over a rolling window
-    - **F&G-Adjusted**: Uses a dynamic confidence level (α) computed using a **nonlinear transformation** of the Fear & Greed Index:
+    with st.expander("🧠 How This CNN-Style Fear & Greed Index Works"):
+        st.markdown("""
+        The official **CNN Fear & Greed Index** includes:
 
-    $$
-    \\alpha(t) = 0.01 + \\frac{0.09}{1 + e^{(F\\&G(t) - 50)/10}}
-    $$
+        1. **Momentum** – S&P 500 vs. 125-day MA  
+        2. **Strength** – % of days above MA  
+        3. **Breadth** – 20-day SPY returns  
+        4. **Put/Call** – VIX-based proxy  
+        5. **Volatility** – VIX vs. 50-day MA  
+        6. **Safe Haven** – SPY/TLT returns  
+        7. **Junk Demand** – HYG/LQD returns
 
-    - Fear pushes α closer to 0.10 → **higher VaR** (conservative)
-    - Greed pushes α closer to 0.01 → **lower VaR** (risk-on)
+        All indicators are normalized (Z-score scaled to 0–100), then averaged.
+        """)
 
-    This adaptive logic enables more responsive risk measures in line with investor sentiment.
-    """)
+    col1, col2 = st.columns(2)
 
-    # Load SPY returns
+    with col1:
+        latest_score = int(fng_df["FNG_Index"].iloc[-1])
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=latest_score,
+            title={'text': "Fear & Greed Index"},
+            gauge={
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "black"},
+                'steps': [
+                    {'range': [0, 25], 'color': '#ffcccc'},
+                    {'range': [25, 50], 'color': '#fff2cc'},
+                    {'range': [50, 75], 'color': '#d9f2d9'},
+                    {'range': [75, 100], 'color': '#b6d7a8'},
+                ]
+            }
+        ))
+        st.plotly_chart(fig, use_container_width=True)
+
+        def get_sentiment_label(score):
+            if score < 25: return "🔴 **Extreme Fear**"
+            elif score < 50: return "🟠 **Fear**"
+            elif score < 60: return "🟡 **Neutral**"
+            elif score < 75: return "🟢 **Greed**"
+            else: return "🟣 **Extreme Greed**"
+
+        st.markdown(f"<h3 style='text-align: center;'>{get_sentiment_label(latest_score)}</h3>", unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("### 🕰️ Sentiment Snapshots")
+
+        def sentiment_tag(score):
+            if score < 25: return "Extreme Fear", "#ffcccc"
+            elif score < 50: return "Fear", "#ffe6cc"
+            elif score < 60: return "Neutral", "#dddddd"
+            elif score < 75: return "Greed", "#ccffcc"
+            else: return "Extreme Greed", "#aaffaa"
+
+        snapshots = {
+            "Previous Close": -2,
+            "1 Week Ago": -5,
+            "1 Month Ago": -21,
+            "1 Year Ago": -252
+        }
+
+        for label, idx in snapshots.items():
+            try:
+                score = int(fng_df["FNG_Index"].iloc[idx])
+                sentiment, color = sentiment_tag(score)
+                st.markdown(
+                    f"""
+                    <div style='display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px dashed #ccc;'>
+                        <div style='font-size: 14px;'>{label}</div>
+                        <div style='font-weight: bold;'>{sentiment}</div>
+                        <div style='background-color: {color}; border-radius: 50%; padding: 6px 12px; font-weight: bold;'>{score}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+            except:
+                st.markdown(f"<i>Data unavailable for {label}</i>", unsafe_allow_html=True)
+
+    st.markdown("### 📉 Historical Fear & Greed Index")
+
+    fig_fng = go.Figure()
+
+    fig_fng.add_trace(go.Scatter(
+        x=fng_df.index, y=fng_df["FNG_Index"],
+        name="F&G Index", mode="lines", yaxis="y1"
+    ))
+
+    fig_fng.add_trace(go.Scatter(
+        x=fng_df.index, y=fng_df["FNG_Smooth"],
+        name="100-day MA", mode="lines", line=dict(color="red"), yaxis="y1"
+    ))
+
+    spy_price = data["SPY"].reindex(fng_df.index)
+    fig_fng.add_trace(go.Scatter(
+        x=spy_price.index, y=spy_price,
+        name="SPY Price", mode="lines", line=dict(color="gray", dash="dot"), yaxis="y2"
+    ))
+
+    fig_fng.update_layout(
+        yaxis=dict(title="F&G Index (0–100)", range=[0, 100]),
+        yaxis2=dict(title="SPY Price", overlaying="y", side="right", showgrid=False),
+        xaxis=dict(title="Date"),
+        shapes=[
+            dict(type="rect", xref="x", yref="y", x0=fng_df.index[0], x1=fng_df.index[-1], y0=0, y1=25,
+                 fillcolor="#ffcccc", opacity=0.2, line_width=0),
+            dict(type="rect", xref="x", yref="y", x0=fng_df.index[0], x1=fng_df.index[-1], y0=75, y1=100,
+                 fillcolor="#d9f2d9", opacity=0.2, line_width=0),
+        ],
+        height=600,
+        margin=dict(l=40, r=40, t=30, b=30)
+    )
+
+    st.plotly_chart(fig_fng, use_container_width=True)
+
+    st.markdown("### 📊 Distribution of the F&G Index (2007–Today)")
+    st.markdown("This histogram shows the distribution of the CNN-style Fear & Greed Index since 2007.")
+
+    col_left, col_right = st.columns([3, 1])
+
+    with col_left:
+        fig_hist = go.Figure()
+        fig_hist.add_trace(go.Histogram(
+            x=fng_df["FNG_Index"],
+            nbinsx=50,
+            marker_color='rgba(100, 150, 250, 0.7)',
+            opacity=0.75
+        ))
+
+        for val, label in zip([25, 50, 75], ["Extreme Fear", "Neutral", "Greed"]):
+            fig_hist.add_shape(
+                type="line", x0=val, x1=val, y0=0, y1=1, xref="x", yref="paper",
+                line=dict(color="black", dash="dot")
+            )
+            fig_hist.add_annotation(
+                x=val, y=1, yref="paper", text=label,
+                showarrow=False, font=dict(size=12), yanchor="bottom"
+            )
+
+        fig_hist.update_layout(
+            xaxis_title="F&G Index Value",
+            yaxis_title="Frequency",
+            height=500,
+            bargap=0.05
+        )
+        st.plotly_chart(fig_hist, use_container_width=True)
+
+    with col_right:
+        stats = {
+            "Mean": fng_df["FNG_Index"].mean(),
+            "Std. Dev.": fng_df["FNG_Index"].std(),
+            "Min": fng_df["FNG_Index"].min(),
+            "Max": fng_df["FNG_Index"].max(),
+            "Skewness": fng_df["FNG_Index"].skew(),
+            "Kurtosis": fng_df["FNG_Index"].kurtosis()
+        }
+        st.markdown("#### 📋 Summary Stats")
+        st.dataframe(pd.DataFrame(stats, index=["Value"]).T, use_container_width=True)
+
+    # === Add adjusted VaR/CVaR plot at bottom ===
+    st.markdown("### 🔎 F&G-Adjusted vs Historical VaR (logistic α(t))")
+
     returns = data["SPY"].pct_change().dropna()
-    fng_index = fng_df["FNG_Index"].reindex(returns.index).fillna(method="ffill")
+    fng_series = fng_df["FNG_Index"].reindex(returns.index).fillna(method="ffill")
 
     window = 100
     var_hist, cvar_hist = [], []
     var_fng, cvar_fng = [], []
 
     for i in range(window, len(returns)):
-        window_returns = returns.iloc[i - window:i]
-        hist_alpha = 0.05  # fixed 95% confidence
+        sample = returns.iloc[i - window:i]
+        hist_alpha = 0.05
 
-        # === Nonlinear alpha based on F&G score
-        fng = fng_index.iloc[i]
-        alpha_fng = 0.01 + 0.09 / (1 + np.exp((fng - 50) / 10))
+        # 🔁 Nonlinear alpha from FNG
+        alpha = 0.01 + 0.09 / (1 + np.exp((fng_series.iloc[i] - 50) / 10))
 
-        var_hist.append(np.percentile(window_returns, 100 * hist_alpha))
-        cvar_hist.append(window_returns[window_returns < np.percentile(window_returns, 100 * hist_alpha)].mean())
+        var_hist.append(np.percentile(sample, 100 * hist_alpha))
+        cvar_hist.append(sample[sample < np.percentile(sample, 100 * hist_alpha)].mean())
 
-        var_fng.append(np.percentile(window_returns, 100 * alpha_fng))
-        cvar_fng.append(window_returns[window_returns < np.percentile(window_returns, 100 * alpha_fng)].mean())
+        var_fng.append(np.percentile(sample, 100 * alpha))
+        cvar_fng.append(sample[sample < np.percentile(sample, 100 * alpha)].mean())
 
-    aligned_index = returns.index[window:]
-
-    df_risk = pd.DataFrame({
-        "Historical VaR": var_hist,
-        "Historical CVaR": cvar_hist,
-        "F&G Adjusted VaR": var_fng,
-        "F&G Adjusted CVaR": cvar_fng,
-        "SPY Price": data["SPY"].reindex(aligned_index)
-    }, index=aligned_index)
-
-    # Normalize SPY price
-    df_risk["SPY Indexed"] = df_risk["SPY Price"] / df_risk["SPY Price"].iloc[0] * 100
+    idx = returns.index[window:]
+    spy_norm = data["SPY"].reindex(idx) / data["SPY"].reindex(idx).iloc[0] * 100
 
     fig_risk = go.Figure()
-    fig_risk.add_trace(go.Scatter(x=df_risk.index, y=df_risk["Historical VaR"], name="Historical VaR", line=dict(dash="dot", color="royalblue")))
-    fig_risk.add_trace(go.Scatter(x=df_risk.index, y=df_risk["Historical CVaR"], name="Historical CVaR", line=dict(dash="dot", color="blue")))
-    fig_risk.add_trace(go.Scatter(x=df_risk.index, y=df_risk["F&G Adjusted VaR"], name="F&G Adjusted VaR", line=dict(color="firebrick")))
-    fig_risk.add_trace(go.Scatter(x=df_risk.index, y=df_risk["F&G Adjusted CVaR"], name="F&G Adjusted CVaR", line=dict(color="darkred")))
-    fig_risk.add_trace(go.Scatter(x=df_risk.index, y=df_risk["SPY Indexed"], name="S&P 500 (Indexed)", yaxis="y2", line=dict(color="black")))
+    fig_risk.add_trace(go.Scatter(x=idx, y=var_hist, name="Historical VaR", line=dict(color="blue", dash="dot")))
+    fig_risk.add_trace(go.Scatter(x=idx, y=cvar_hist, name="Historical CVaR", line=dict(color="darkblue", dash="dot")))
+    fig_risk.add_trace(go.Scatter(x=idx, y=var_fng, name="F&G Adjusted VaR", line=dict(color="red")))
+    fig_risk.add_trace(go.Scatter(x=idx, y=cvar_fng, name="F&G Adjusted CVaR", line=dict(color="darkred")))
+    fig_risk.add_trace(go.Scatter(x=idx, y=spy_norm, name="S&P 500 (Indexed)", yaxis="y2", line=dict(color="black")))
 
     fig_risk.update_layout(
-        title="Rolling VaR & CVaR vs S&P 500 Price (Indexed)",
-        yaxis=dict(title="VaR / CVaR (%)"),
-        yaxis2=dict(
-            title="S&P 500 (Indexed)",
-            overlaying="y",
-            side="right",
-            showgrid=False
-        ),
-        height=500,
-        legend=dict(x=0.01, y=0.99)
+        title="Rolling VaR & CVaR vs S&P 500 (Indexed)",
+        yaxis=dict(title="VaR / CVaR"),
+        yaxis2=dict(title="S&P 500", overlaying="y", side="right", showgrid=False),
+        height=500
     )
     st.plotly_chart(fig_risk, use_container_width=True)
-
-    # Breach Frequency Table
-    st.markdown("### ❗ Breach Frequency")
-    hist_breaches = (returns.iloc[window:] < df_risk["Historical VaR"]).mean() * 100
-    fng_breaches = (returns.iloc[window:] < df_risk["F&G Adjusted VaR"]).mean() * 100
-
-    breach_df = pd.DataFrame({
-        "% of Days": [round(hist_breaches, 2), round(fng_breaches, 2)]
-    }, index=["Historical VaR Breaches", "F&G Adj. VaR Breaches"])
-
-    st.dataframe(breach_df)
 
 
 
