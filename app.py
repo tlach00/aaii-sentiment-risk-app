@@ -695,6 +695,39 @@ By overlaying the S&P 500 price:
 # ---------------------------- TAB 7 ----------------------------------
 with tab7:
     st.markdown("## ⚖️ F&G-Adjusted Stop-Loss with Bullish Sentiment Re-entry (60/40 Portfolio)")
+    st.markdown("""
+### 🧠 Strategy Overview
+
+This strategy dynamically reduces portfolio exposure during high-risk periods using:
+- **Value at Risk (VaR)**: 5% rolling quantile of recent 100-day returns
+- **Fear & Greed (F&G) Index**: Determines how aggressively to scale back exposure:
+  - Lower sentiment → higher stop-loss multiplier
+  - Higher sentiment → tighter thresholds
+
+When a return breach occurs (i.e., below the F&G-adjusted VaR), exposure drops to **30%**.
+It only returns to normal levels when:
+- Bullish sentiment rises above a user-defined threshold (default: 30%)
+- At least 3 quiet days have passed
+
+### 🔍 Interpretation of the Chart
+- The plot compares **indexed performance** of the raw 60/40 portfolio and the **strategy with stop-loss and bullish sentiment re-entry**
+- The strategy aims to **limit drawdowns** during downturns and re-enter at favorable sentiment conditions
+
+### 📟 Trigger Table
+- The second table breaks down how many stop-loss events were triggered per year and regime
+  (Extreme Fear, Fear, Greed, Extreme Greed)
+
+### 📋 Summary Table
+- This compares performance metrics:
+  - Return
+  - Volatility
+  - Conditional VaR (CVaR)
+  - Downside Deviation
+  - Max Drawdown
+
+The goal: **enhance downside protection** while participating in upside trends using a **sentiment-aware risk overlay**.
+""")
+
 
     # Add adjustable start date selector
     available_dates = data.index.intersection(fng_df.index)
