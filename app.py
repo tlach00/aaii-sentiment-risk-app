@@ -857,7 +857,7 @@ with tab7:
     st.pyplot(fig)
 
 # ---------------------------- TAB 8 ----------------------------------
-with tab7:
+with tab8:
     st.markdown("## 🧨 F&G Stop-Loss Performance During Market Crises (60/40 SPY/TLT)2")
 
     crisis_periods = {
