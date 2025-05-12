@@ -861,9 +861,9 @@ with tab8:
     st.markdown("## 🧨 F&G Stop-Loss Performance During Market Crises (60/40 SPY/TLT)2")
 
     crisis_periods = {
-        "2008 Crash": ("2008-09-01", "2009-04-01"),
-        "COVID Crash": ("2020-02-01", "2020-07-01"),
-        "2022 Bear Market": ("2022-01-01", "2023-01-01")
+        "2008 Crash": ("2007-01-01", "2010-01-01"),
+        "COVID Crash": ("2019-01-01", "2022-01-01"),
+        "2022 Bear Market": ("2021-01-01", "2024-01-01")
     }
 
     spy = data["SPY"].pct_change()
@@ -947,20 +947,7 @@ with tab8:
         except Exception as e:
             st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
 
-    # === Risk Metric Comparison Bar Chart ===
-    import matplotlib.pyplot as plt
 
-    risk_data = {
-        "2008 - CVaR": [28.12, 26.75],
-        "2008 - Downside Dev": [4.55, 4.32],
-        "2008 - Volatility": [24.90, 21.67],
-        "2020 - CVaR": [19.28, 16.43],
-        "2020 - Downside Dev": [3.94, 3.41],
-        "2020 - Volatility": [17.61, 15.34],
-        "2022 - CVaR": [12.87, 12.80],
-        "2022 - Downside Dev": [2.16, 2.14],
-        "2022 - Volatility": [9.83, 9.79],
-    }
 
     df_risk = pd.DataFrame(risk_data, index=["60/40 Only", "With Stop-Loss"]).T
 
