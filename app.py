@@ -589,7 +589,7 @@ This histogram visualizes the **distribution of daily SPY returns** over the pas
     fng_alpha = 0.01 + ((100 - fng_series) / 100) * 0.09
     fng_alpha = fng_alpha.clip(0.01, 0.2)
 
-    bullish_alpha = 0.01 + ((100 - bullish_series) / 100) * 0.09
+    bullish_alpha = 0.01 + (bullish_series / 100) * 0.09
     bullish_alpha = bullish_alpha.clip(0.01, 0.2)
 
     # === Adjusted VaR/CVaR computation
