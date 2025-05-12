@@ -1053,6 +1053,7 @@ with tab8:
             st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
 
 
+
 # ---------------------------- TAB 9 ----------------------------------
 with tab9:
     st.markdown("## 📊 Full-Period Summary Metrics: Dynamic Weights + Dynamic Exposure")
@@ -1214,16 +1215,14 @@ with tab9:
     )
     st.plotly_chart(fig_alloc, use_container_width=True)
 
-    # === Performance Chart + Summary Table
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        st.markdown(f"### 📈 Indexed Performance (Since {start_date.date()})")
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=cum_static.index, y=cum_static / cum_static.iloc[0], name="60/40 Portfolio", line=dict(color="navy")))
-        fig.add_trace(go.Scatter(x=cum_strategy.index, y=cum_strategy / cum_strategy.iloc[0], name="F&G Dyn. Strategy", line=dict(color="skyblue")))
-        fig.update_layout(title="Full Period Indexed Performance", yaxis_title="Indexed Value", height=450)
-        st.plotly_chart(fig, use_container_width=True)
+    # === Performance Chart
+    st.markdown(f"### 📈 Indexed Performance (Since {start_date.date()})")
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=cum_static.index, y=cum_static / cum_static.iloc[0], name="60/40 Portfolio", line=dict(color="navy")))
+    fig.add_trace(go.Scatter(x=cum_strategy.index, y=cum_strategy / cum_strategy.iloc[0], name="F&G Dyn. Strategy", line=dict(color="skyblue")))
+    fig.update_layout(title="Full Period Indexed Performance", yaxis_title="Indexed Value", height=450)
+    st.plotly_chart(fig, use_container_width=True)
 
-    with col2:
-        st.markdown("### 📋 Summary Table")
-        st.dataframe(stats_all.round(2), use_container_width=True)
+    # === Final Table
+    st.markdown("### 📋 Summary Table")
+    st.dataframe(stats_all.round(2), use_container_width=True)
