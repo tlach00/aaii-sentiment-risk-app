@@ -930,7 +930,7 @@ with tab7:
 
 # ---------------------------- TAB 8 ----------------------------------
 with tab8:
-    st.markdown("## 📊 Full-Period Summary Metrics: F&G + Bullish Stop-Loss vs 60/40 Portfolio")
+    st.markdown("## 📊 Full-Period Summary Metrics: Dynamic Weights + F&G Stop-Loss")
 
     spy = data["SPY"].pct_change()
     tlt = data["TLT"].pct_change()
@@ -943,7 +943,24 @@ with tab8:
     fng_series = fng_series.loc[common_idx]
     bullish_series = bullish_series.loc[common_idx]
 
-    port_returns = (0.6 * spy + 0.4 * tlt)
+    # === Dynamic Weighting Function
+    def dynamic_weights(fng):
+        if fng >= 75:
+            return 0.8, 0.2
+        elif fng >= 50:
+            return 0.6, 0.4
+        elif fng >= 25:
+            return 0.4, 0.6
+        else:
+            return 0.3, 0.7
+
+    weights = fng_series.apply(dynamic_weights)
+    w_spy = weights.apply(lambda x: x[0])
+    w_tlt = weights.apply(lambda x: x[1])
+
+    port_returns = (spy * w_spy + tlt * w_tlt).dropna()
+
+    # === Stop-Loss Threshold
     var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
     var_series = var_series.reindex(port_returns.index, method="ffill")
     fng_series = fng_series.reindex(port_returns.index, method="ffill")
@@ -985,19 +1002,23 @@ with tab8:
 
     strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
     cum_strategy = (1 + strategy_returns).cumprod()
-    cum_naive = (1 + port_returns).cumprod()
+
+    # === Static 60/40 Portfolio Benchmark
+    static_port_returns = (0.6 * spy + 0.4 * tlt).dropna()
+    static_port_returns = static_port_returns.reindex(cum_strategy.index)
+    cum_static = (1 + static_port_returns).cumprod()
 
     def max_drawdown(cum):
         roll_max = cum.cummax()
         drawdown = cum / roll_max - 1.0
         return drawdown.min()
 
-    naive_r = port_returns
+    naive_r = static_port_returns
     strat_r = strategy_returns
 
     stats_all = pd.DataFrame({
         "Return (%)": [
-            (cum_naive.iloc[-1] / cum_naive.iloc[0] - 1) * 100,
+            (cum_static.iloc[-1] / cum_static.iloc[0] - 1) * 100,
             (cum_strategy.iloc[-1] / cum_strategy.iloc[0] - 1) * 100
         ],
         "Volatility (%)": [
@@ -1013,18 +1034,18 @@ with tab8:
             np.sqrt(np.mean(np.minimum(0, strat_r)**2)) * np.sqrt(252) * 100
         ],
         "Max Drawdown (%)": [
-            max_drawdown(cum_naive) * 100,
+            max_drawdown(cum_static) * 100,
             max_drawdown(cum_strategy) * 100
         ]
-    }, index=["60/40 Only", "With F&G + Bullish SL"])
+    }, index=["60/40 Only", "Dynamic F&G + SL"])
 
     col1, col2 = st.columns([3, 1])
 
     with col1:
         st.markdown("### 📈 Full Period Indexed Performance")
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=cum_naive.index, y=cum_naive / cum_naive.iloc[0], name="60/40 Portfolio", line=dict(color="navy")))
-        fig.add_trace(go.Scatter(x=cum_strategy.index, y=cum_strategy / cum_strategy.iloc[0], name="With F&G + Bullish SL", line=dict(color="skyblue")))
+        fig.add_trace(go.Scatter(x=cum_static.index, y=cum_static / cum_static.iloc[0], name="60/40 Portfolio", line=dict(color="navy")))
+        fig.add_trace(go.Scatter(x=cum_strategy.index, y=cum_strategy / cum_strategy.iloc[0], name="With Dynamic F&G SL", line=dict(color="skyblue")))
         fig.update_layout(title="Full Period Indexed Performance", xaxis_title="Date", yaxis_title="Indexed Value", height=500)
         st.plotly_chart(fig, use_container_width=True)
 
