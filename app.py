@@ -638,31 +638,34 @@ with tab5:
 with tab6:
     st.markdown("## ⚖️ F&G-Adjusted Stop-Loss with Bullish Sentiment Re-entry (60/40 Portfolio)")
 
+    # Add adjustable start date selector
+    available_dates = data.index.intersection(fng_df.index)
+    default_start = available_dates[0].date()
+    selected_start = st.date_input("Select portfolio start date:", value=default_start, min_value=default_start, max_value=available_dates[-1].date())
+    selected_start = pd.to_datetime(selected_start)
+
     exposure_floor = 0.3
     exposure_ceiling = 1.0
-
-    # Parameters
     bullish_threshold = st.slider("Minimum Bullish Sentiment to Re-enter Market (%)", 0, 100, 30)
 
-    # Fetch returns and align with FNG
     spy = data["SPY"].pct_change()
     tlt = data["TLT"].pct_change()
     fng_series = fng_df["FNG_Index"]
 
     common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
+    common_idx = common_idx[common_idx >= selected_start]  # Apply selected start date
+
     spy = spy.loc[common_idx]
     tlt = tlt.loc[common_idx]
     fng_series = fng_series.loc[common_idx]
     port_returns = (0.6 * spy + 0.4 * tlt).dropna()
 
-    # VaR computation
     var_series = port_returns.rolling(window=100).apply(lambda x: np.percentile(x, 5)).dropna()
     common_idx = port_returns.index.intersection(var_series.index)
     port_returns = port_returns.loc[common_idx]
     var_series = var_series.loc[common_idx]
     fng_series = fng_series.loc[common_idx]
 
-    # F&G-based multiplier
     def stop_loss_multiplier_from_fng(fng):
         if fng < 25: return 1.5
         elif fng < 50: return 1.2
@@ -673,19 +676,14 @@ with tab6:
     stop_loss_threshold = var_series * sl_multiplier
     triggered = port_returns < stop_loss_threshold
 
-    # ✅ AAII Bullish data (weekly, forward filled to daily and aligned)
-    bullish_series = clean_df.set_index("Date")["Bullish"]
-    bullish_series = bullish_series.resample("D").ffill()
+    bullish_series = clean_df.set_index("Date")["Bullish"].resample("D").ffill()
     bullish_series = bullish_series.reindex(port_returns.index, method="ffill")
 
-    # Dynamic exposure (based on VaR)
     var_scaled = (var_series - var_series.min()) / (var_series.max() - var_series.min())
     dynamic_exposure = exposure_ceiling - var_scaled * (exposure_ceiling - exposure_floor)
     dynamic_exposure = dynamic_exposure.clip(exposure_floor, exposure_ceiling)
 
-    # Exposure logic: stop-loss based on FNG, re-entry based on bullish sentiment
     exposure_series = pd.Series(index=port_returns.index, dtype=float)
-
     for i, date in enumerate(port_returns.index):
         if i == 0:
             exposure_series.iloc[i] = dynamic_exposure.iloc[i]
@@ -698,12 +696,10 @@ with tab6:
                 else:
                     exposure_series.iloc[i] = exposure_floor
 
-    # Apply lag to simulate real-world adjustment
     adjusted_returns = port_returns * exposure_series.shift(1).fillna(exposure_ceiling)
     cumulative_return = (1 + adjusted_returns).cumprod()
     cumulative_no_sl = (1 + port_returns).cumprod()
 
-    # Plot results
     st.markdown("### 📈 60/40 Portfolio: Raw vs Stop-Loss + Bullish Filter")
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=cumulative_no_sl.index, y=cumulative_no_sl / cumulative_no_sl.iloc[0], name="60/40 No Stop-Loss"))
@@ -711,8 +707,7 @@ with tab6:
     fig.update_layout(title="Indexed Portfolio Value", yaxis_title="Value", xaxis_title="Date")
     st.plotly_chart(fig, use_container_width=True)
 
-    # Stop-loss trigger stats by sentiment regime
-    st.markdown("### 🧾 Stop-Loss Trigger Stats by Sentiment Regime")
+    st.markdown("### 📟 Stop-Loss Trigger Stats by Sentiment Regime")
 
     def classify_regime(fng):
         if fng < 25: return "Extreme Fear"
