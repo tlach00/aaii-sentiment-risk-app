@@ -858,33 +858,12 @@ with tab7:
 
 # ---------------------------- TAB 8 ----------------------------------
 with tab8:
-     st.markdown("### 📅 Last 1-Year Strategy Performance")
-    try:
-        last_year_start = port_returns.index[-252]  # Approximate 1 trading year
-        sub_index = cum_strategy.loc[last_year_start:].index
-
-        fig_1yr = go.Figure()
-        fig_1yr.add_trace(go.Scatter(
-            x=sub_index,
-            y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
-            name="60/40 Portfolio"
-        ))
-        fig_1yr.add_trace(go.Scatter(
-            x=sub_index,
-            y=cum_strategy.loc[sub_index] / cum_strategy.loc[sub_index[0]],
-            name="With F&G + Bullish Stop-Loss"
-        ))
-        fig_1yr.update_layout(title="1-Year Indexed Performance", yaxis_title="Indexed Value", height=400)
-        st.plotly_chart(fig_1yr, use_container_width=True)
-    except Exception as e:
-        st.warning(f"⚠️ Could not generate 1-year comparison: {e}")
-        
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
     crisis_periods = {
-        "2008 Crash 2": ("2008-09-01", "2009-04-01"),
-        "COVID Crash 2": ("2020-02-01", "2022-07-01"),
-        "2022 Bear Market 2": ("2022-01-01", "2023-01-01")
+        "2008 Crash": ("2007-01-01", "2010-01-01"),
+        "COVID Crash": ("2019-01-01", "2022-01-01"),
+        "2022 Bear Market": ("2021-01-01", "2024-01-01")
     }
 
     spy = data["SPY"].pct_change()
@@ -933,48 +912,24 @@ with tab8:
     cum_strategy = (1 + strategy_returns).cumprod()
     cum_naive = (1 + port_returns).cumprod()
 
-    for label, (start, end) in crisis_periods.items():
-        st.markdown(f"### 📉 {label}")
-        try:
-            sub_index = cum_strategy.loc[start:end].index
-            start_idx = sub_index[0]
-            end_idx = sub_index[-1]
+    st.markdown("### 📅 Last 1-Year Strategy Performance")
+    try:
+        last_year_start = port_returns.index[-252]
+        sub_index = cum_strategy.loc[last_year_start:].index
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=sub_index, y=cum_naive.loc[sub_index] / cum_naive.loc[start_idx],
-                                     name="60/40 Portfolio"))
-            fig.add_trace(go.Scatter(x=sub_index, y=cum_strategy.loc[sub_index] / cum_strategy.loc[start_idx],
-                                     name="With F&G + Bullish Stop-Loss"))
-            fig.update_layout(title=f"Performance Comparison During {label}", yaxis_title="Indexed Value", height=400)
-            st.plotly_chart(fig, use_container_width=True)
-
-            naive_r = port_returns.loc[start_idx:end_idx]
-            strat_r = strategy_returns.loc[start_idx:end_idx]
-
-            def max_drawdown(cum):
-                roll_max = cum.cummax()
-                drawdown = cum / roll_max - 1.0
-                return drawdown.min()
-
-            stats = pd.DataFrame({
-                "Return (%)": [
-                    (cum_naive.loc[end_idx] / cum_naive.loc[start_idx] - 1) * 100,
-                    (cum_strategy.loc[end_idx] / cum_strategy.loc[start_idx] - 1) * 100
-                ],
-                "Volatility (%)": [naive_r.std() * np.sqrt(252) * 100, strat_r.std() * np.sqrt(252) * 100],
-                "CVaR (95%) (%)": [naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
-                                   strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100],
-                "Downside Dev. (%)": [
-                    np.sqrt(np.mean(np.minimum(0, naive_r) ** 2)) * np.sqrt(252) * 100,
-                    np.sqrt(np.mean(np.minimum(0, strat_r) ** 2)) * np.sqrt(252) * 100
-                ],
-                "Max Drawdown (%)": [
-                    max_drawdown(cum_naive.loc[start_idx:end_idx]) * 100,
-                    max_drawdown(cum_strategy.loc[start_idx:end_idx]) * 100
-                ]
-            }, index=["60/40 Only", "With Stop-Loss"])
-
-            st.dataframe(stats.round(2))
-        except Exception as e:
-            st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
+        fig_1yr = go.Figure()
+        fig_1yr.add_trace(go.Scatter(
+            x=sub_index,
+            y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
+            name="60/40 Portfolio"
+        ))
+        fig_1yr.add_trace(go.Scatter(
+            x=sub_index,
+            y=cum_strategy.loc[sub_index] / cum_strategy.loc[sub_index[0]],
+            name="With F&G + Bullish Stop-Loss"
+        ))
+        fig_1yr.update_layout(title="1-Year Indexed Performance", yaxis_title="Indexed Value", height=400)
+        st.plotly_chart(fig_1yr, use_container_width=True)
+    except Exception as e:
+        st.warning(f"⚠️ Could not generate 1-year comparison: {e}")
 
