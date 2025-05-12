@@ -635,7 +635,7 @@ with tab5:
 
 # ---------------------------- TAB 6 ----------------------------------
 
-with tab8:
+with tab6:
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
     crisis_periods = {
@@ -760,7 +760,7 @@ fig_1yr.add_trace(go.Scatter(
         st.dataframe(stats_1yr.round(2))
     except Exception as e:
         st.warning(f"⚠️ Could not generate 1-year comparison: {e}")
-with tab8:
+with tab6:
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
     crisis_periods = {
