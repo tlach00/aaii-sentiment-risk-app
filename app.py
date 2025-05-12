@@ -667,9 +667,10 @@ with tab6:
     stop_loss_threshold = var_series * sl_multiplier
     triggered = port_returns < stop_loss_threshold
 
-    # AAII Bullish data (weekly, forward filled to daily)
-    bullish_series = clean_df.set_index("Date")["Bullish"].resample("D").ffill()
-    bullish_series = bullish_series.loc[port_returns.index].fillna(method="ffill")
+    # ✅ AAII Bullish data (weekly, forward filled to daily and aligned)
+    bullish_series = clean_df.set_index("Date")["Bullish"]
+    bullish_series = bullish_series.resample("D").ffill()
+    bullish_series = bullish_series.reindex(port_returns.index, method="ffill")
 
     # Dynamic exposure (based on VaR)
     var_scaled = (var_series - var_series.min()) / (var_series.max() - var_series.min())
