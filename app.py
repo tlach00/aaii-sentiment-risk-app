@@ -83,13 +83,14 @@ def load_fng_data():
 fng_df, data = load_fng_data()
 
 # Tabs
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab 7 = st.tabs([
     "📁 Raw Excel Viewer",
     "📈 AAII Sentiment survey",
     "😱 CNN F&G replication", 
     "👻 Stock F&G", 
     "📟 F&G in Risk Management",
     "⚖️ Dynamic Exposure Scaling & Stop-Loss Triggers"
+    "🧨 F&G Stop-Loss"
 ])
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
@@ -734,3 +735,69 @@ with tab6:
     )
 
     st.dataframe(summary)
+
+# ---------------------------- TAB 7 ----------------------------------
+with st.container():
+    st.markdown("## 🧨 F&G Stop-Loss Performance During Market Crises")
+
+    crisis_periods = {
+        "2008 Crash": ("2007-10-01", "2009-04-01"),
+        "COVID Crash": ("2020-02-01", "2020-07-01"),
+        "2022 Bear Market": ("2022-01-01", "2023-01-01")
+    }
+
+    spy = data["SPY"].pct_change()
+    tlt = data["TLT"].pct_change()
+    fng_series = fng_df["FNG_Index"]
+    common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
+    spy = spy.loc[common_idx]
+    tlt = tlt.loc[common_idx]
+    fng_series = fng_series.loc[common_idx]
+
+    port_returns = (0.6 * spy + 0.4 * tlt).dropna()
+    var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
+    var_series = var_series.loc[port_returns.index]
+    fng_series = fng_series.loc[port_returns.index]
+
+    def stop_loss_multiplier(fng):
+        if fng < 25: return 1.5
+        elif fng < 50: return 1.2
+        elif fng < 75: return 1.0
+        else: return 0.8
+
+    sl_multiplier = fng_series.apply(stop_loss_multiplier)
+    threshold = var_series * sl_multiplier
+    triggered = port_returns < threshold
+
+    exposure = pd.Series(index=port_returns.index, dtype=float)
+    exposure.iloc[0] = 1.0
+    for i in range(1, len(port_returns)):
+        date = port_returns.index[i]
+        if triggered.iloc[i]:
+            exposure.iloc[i] = 0.3
+        else:
+            exposure.iloc[i] = 1.0
+
+    strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
+    cum_strategy = (1 + strategy_returns).cumprod()
+    cum_naive = (1 + port_returns).cumprod()
+
+    for label, (start, end) in crisis_periods.items():
+        st.markdown(f"### 📉 {label}")
+        sub_index = cum_strategy.loc[start:end].index
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=sub_index, y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
+                                 name="60/40 Portfolio"))
+        fig.add_trace(go.Scatter(x=sub_index, y=cum_strategy.loc[sub_index] / cum_strategy.loc[sub_index[0]],
+                                 name="F&G Stop-Loss Portfolio"))
+        fig.update_layout(title=f"Performance Comparison During {label}", yaxis_title="Indexed Value", height=400)
+        st.plotly_chart(fig, use_container_width=True)
+
+        stats = pd.DataFrame({
+            "Return (%)": [
+                (cum_naive.loc[end] / cum_naive.loc[start] - 1) * 100,
+                (cum_strategy.loc[end] / cum_strategy.loc[start] - 1) * 100
+            ]
+        }, index=["60/40", "With Stop-Loss"])
+        st.dataframe(stats.round(2))
