@@ -1185,7 +1185,7 @@ with tab9:
         ]
     }, index=["60/40 Only", "F&G Dynamic Weights + SL"])
 
-    # === Allocation Area Chart (SPY vs TLT)
+    # === Allocation Area Chart (SPY vs TLT Weights)
     st.markdown("### 🧮 Dynamic Allocation Over Time (SPY vs TLT Weights)")
 
     fig_alloc = go.Figure()
@@ -1206,7 +1206,7 @@ with tab9:
         fillcolor="rgba(192,192,192,0.5)"
     ))
     fig_alloc.update_layout(
-        height=300,
+        height=450,
         yaxis_title="Allocation (%)",
         xaxis_title="Date",
         title="Dynamic Portfolio Allocation Between SPY & TLT",
@@ -1214,7 +1214,7 @@ with tab9:
     )
     st.plotly_chart(fig_alloc, use_container_width=True)
 
-    # === Performance Chart + Stats Table
+    # === Performance Chart + Summary Table
     col1, col2 = st.columns([4, 1])
     with col1:
         st.markdown(f"### 📈 Indexed Performance (Since {start_date.date()})")
