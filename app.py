@@ -128,12 +128,9 @@ with tab2:
 
     latest_bullish = clean_df["Bullish"].iloc[-1]
 
-    if latest_bullish < 1:
-    value *= 100
-
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
-        value=latest_bullish,
+        value=latest_bullish*100,
         title={'text': "Bullish Sentiment (%)"},
         gauge={
             'axis': {'range': [0, 100]},
