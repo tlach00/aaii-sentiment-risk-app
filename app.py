@@ -540,7 +540,7 @@ with tab5:
 # ---------------------------- TAB 6 ----------------------------------
 with tab6:
     st.markdown("""
-### 🧠 What This Shows:  
+### 🧠 Distribution of SPY Returns with Historical & F&G-Adjusted VaR:  
 This histogram visualizes the **distribution of daily SPY returns** over the past 5 years.
 
 🔹 The bars represent how frequently specific return levels occurred.
@@ -657,8 +657,23 @@ This shows how **risk thresholds shift depending on method**, and how **sentimen
             "CVaR ($)": [-cvar_hist * investment, -cvar_param * investment, -cvar_mc * investment]
         }, index=["Historical", "Parametric", "Monte Carlo"])
         st.dataframe(summary_df.round(2), use_container_width=True, height=350)
+    st.markdown("""
+### 🧮 F&G Adjusted VaR Formula:
 
-    st.markdown("### 🧮 F&G Adjusted VaR Formula")
+This time-series plot compares **rolling VaR/CVaR** estimates against the **indexed S&P 500 price**.
+
+There are two types of risk estimates:
+- **Traditional (Historical)**: Fixed confidence level (e.g. 95%) applied over a rolling window
+- **F&G-Adjusted**: Varies the alpha threshold **based on market sentiment** via the Fear & Greed Index.
+
+By overlaying the S&P 500 price:
+- You can observe **how risk estimates evolve alongside market trends**
+- Notice that F&G-adjusted risk **spikes during fearful periods** (when prices are falling)
+- This allows portfolios to **adapt exposure dynamically to changing emotional regimes**
+
+💡 The dual-axis format helps highlight **timing relationships between market downturns and risk model responsiveness**.
+""")
+
     st.markdown(r"""
     $$ \alpha(t) = 0.01 + \left( \frac{100 - \text{F\&G}(t)}{100} \right) \cdot 0.09 $$
 
