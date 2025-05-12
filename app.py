@@ -824,3 +824,32 @@ with tab7:
             st.dataframe(stats.round(2))
         except Exception as e:
             st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
+
+         # === Risk Metric Comparison Bar Chart ===
+        import matplotlib.pyplot as plt
+        
+        # Risk metric data extracted from crisis tables
+        risk_data = {
+            "2008 - CVaR": [56.26, 55.09],
+            "2008 - Downside Dev": [7.29, 7.29],
+            "2008 - Volatility": [35.32, 39.09],
+            "2020 - CVaR": [48.43, 41.67],
+            "2020 - Downside Dev": [7.34, 6.49],
+            "2020 - Volatility": [49.64, 42.27],
+            "2022 - CVaR": [24.24, 24.18],
+            "2022 - Downside Dev": [3.35, 3.35],
+            "2022 - Volatility": [18.05, 18.05],
+        }
+        
+        df_risk = pd.DataFrame(risk_data, index=["SPY Only", "With Stop-Loss"]).T
+        
+        fig, ax = plt.subplots(figsize=(12, 6))
+        df_risk.plot(kind="bar", ax=ax, color=["#1f77b4", "#ff7f0e"])
+        ax.set_title("Comparison of Risk Metrics During Crises", fontsize=16)
+        ax.set_ylabel("Value (%)")
+        ax.legend(title="", loc="upper right")
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        
+        st.markdown("### 📊 Comparison of Risk Metrics During Crises")
+        st.pyplot(fig)
