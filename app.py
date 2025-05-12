@@ -102,6 +102,7 @@ with tab1:
     st.header("📊 Historical Data Behind CNN Fear & Greed Index")
     st.dataframe(fng_df.tail(300), use_container_width=True, height=400)
 # ---------------------------- TAB 2 ----------------------------------
+# ---------------------------- TAB 2 ----------------------------------
 with tab2:
     st.markdown("## :chart_with_upwards_trend: AAII Investor sentiment survey")
 
@@ -121,30 +122,18 @@ with tab2:
       - 🐻 **Bearish**: ~31.0%  
     """)
 
-    # === AAII Investor sentiment Index  ===
-    import plotly.graph_objects as go
-    st.markdown("### 🔷 AAII Investor sentiment Index")
-    st.write("This indicator dynamically estimates current market sentiment based on AAII bullish/bearish sentiment and price momentum.")
-    st.markdown("*The score is the average of two normalized components: the Bull-Bear sentiment spread and the 4-week return of the S&P 500.*")
+    # === Bullish Sentiment Gauge Only ===
+    st.markdown("### 🔷 AAII Bullish Sentiment Gauge")
 
-    df_fg = clean_df.copy()
-    df_fg["BullBearSpread"] = df_fg["Bullish"] - df_fg["Bearish"]
-    df_fg["Momentum"] = df_fg["SP500_Close"].pct_change(4)
-
-    bb_scaled = (df_fg["BullBearSpread"] - df_fg["BullBearSpread"].min()) / (df_fg["BullBearSpread"].max() - df_fg["BullBearSpread"].min())
-    mo_scaled = (df_fg["Momentum"] - df_fg["Momentum"].min()) / (df_fg["Momentum"].max() - df_fg["Momentum"].min())
-    df_fg["FG_Score"] = ((bb_scaled + mo_scaled) / 2 * 100).clip(0, 100)
-    df_fg.dropna(inplace=True)
-
-    current_score = int(df_fg["FG_Score"].iloc[-1])
+    latest_bullish = clean_df["Bullish"].iloc[-1]
 
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
-        value=current_score,
-        title={'text': "Fear & Greed Index"},
+        value=latest_bullish,
+        title={'text': "Bullish Sentiment (%)"},
         gauge={
             'axis': {'range': [0, 100]},
-            'bar': {'color': "black"},
+            'bar': {'color': "green"},
             'steps': [
                 {'range': [0, 25], 'color': '#ffe6e6'},
                 {'range': [25, 50], 'color': '#fff5cc'},
@@ -153,28 +142,7 @@ with tab2:
             ]
         }
     ))
-    st.plotly_chart(go.Figure(fig), use_container_width=True)
-
-    def get_sentiment_label(score):
-        if score < 25:
-            return "Extreme Fear"
-        elif score < 50:
-            return "Fear"
-        elif score < 75:
-            return "Greed"
-        else:
-            return "Extreme Greed"
-
-    sentiment_label = get_sentiment_label(current_score)
-    label_descriptions = {
-        "Extreme Fear": "🔴 **Extreme Fear** – Investors are very worried.",
-        "Fear": "🟠 **Fear** – Investors are cautious.",
-        "Neutral": "🟡 **Neutral** – Market is balanced.",
-        "Greed": "🟢 **Greed** – Investors are optimistic.",
-        "Extreme Greed": "🟣 **Extreme Greed** – Investors are euphoric."
-    }
-    description = label_descriptions.get(sentiment_label, "")
-    st.markdown(f"<h2 style='text-align: center;'>{description}</h2>", unsafe_allow_html=True)
+    st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("🕰️ Historical Sentiment Snapshots")
     dates = {
@@ -185,13 +153,14 @@ with tab2:
     }
     cols = st.columns(len(dates))
     for i, (label, idx) in enumerate(dates.items()):
-        val = int(df_fg["FG_Score"].iloc[idx])
-        cols[i].metric(label, get_sentiment_label(val), val)
+        val = clean_df["Bullish"].iloc[idx]
+        cols[i].metric(label, f"{val:.1f}%")
 
     try:
-        st.caption(f"Last updated {df_fg['Date'].iloc[-1].strftime('%B %d at %I:%M %p')} ET")
+        st.caption(f"Last updated {clean_df['Date'].iloc[-1].strftime('%B %d at %I:%M %p')} ET")
     except Exception:
         st.caption("Last updated: Unavailable")
+
     start_date, end_date = st.slider(
         "Select a date range:",
         min_value=min_date,
@@ -202,17 +171,13 @@ with tab2:
     start_date = pd.to_datetime(start_date)
     end_date = pd.to_datetime(end_date)
     filtered_df = clean_df[(clean_df["Date"] >= start_date) & (clean_df["Date"] <= end_date)]
-    st.markdown("### :newspaper: S&P 500 Weekly Close")
-    chart1 = alt.Chart(filtered_df).mark_line(color='black').encode(
-        x=alt.X('Date:T', title='Date'),
-        y=alt.Y('SP500_Close:Q', title='Price')
-    ).properties(height=300)
-    st.altair_chart(chart1, use_container_width=True)
+
     st.markdown("### 🧠 Investor Sentiment (Toggle Lines)")
     col1, col2, col3 = st.columns(3)
     show_bullish = col1.checkbox("🐂 Bullish", value=True)
     show_neutral = col2.checkbox("≡ Neutral", value=True)
     show_bearish = col3.checkbox("🐻 Bearish", value=True)
+
     chart2 = alt.Chart(filtered_df).transform_fold(
         ["Bullish", "Neutral", "Bearish"],
         as_=["Sentiment", "Value"]
@@ -228,16 +193,17 @@ with tab2:
     if show_bearish: filters.append("Bearish")
     chart2 = chart2.transform_filter(alt.FieldOneOfPredicate(field='Sentiment', oneOf=filters))
     st.altair_chart(chart2, use_container_width=True)
+
     st.markdown("### :chart_with_upwards_trend: Bullish Sentiment Moving Average")
     ma_window = st.slider("Select MA Window (weeks):", 1, 52, 52, key="tab2_ma")
     df_ma = filtered_df.copy()
     df_ma["Bullish_MA"] = df_ma["Bullish"].rolling(window=ma_window, min_periods=1).mean()
-    base = alt.Chart(df_ma).encode(x='Date:T')
-    chart3 = alt.layer(
-        base.mark_line(color='black').encode(y=alt.Y('SP500_Close:Q', title='S&P 500 Price')),
-        base.mark_line(color='green').encode(y=alt.Y('Bullish_MA:Q', title='Bullish Sentiment MA'))
-    ).resolve_scale(y='independent').properties(height=300)
+    chart3 = alt.Chart(df_ma).mark_line(color='green').encode(
+        x=alt.X('Date:T'),
+        y=alt.Y('Bullish_MA:Q', title='Bullish Sentiment MA')
+    ).properties(height=300)
     st.altair_chart(chart3, use_container_width=True)
+
 
 
 # ---------------------------- TAB 3 ----------------------------
