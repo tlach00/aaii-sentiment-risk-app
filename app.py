@@ -1153,7 +1153,7 @@ with tab9:
         return (cum / roll_max - 1).min()
 
     sharpe_ratio = lambda r: (r.mean() / r.std()) * np.sqrt(252)
-    annual_return = lambda r: (np.prod(1 + r) ** (252 / len(r)) - 1) * 100
+    annual_return = lambda r: ((1 + r).prod()) ** (252 / len(r)) - 1    
     annual_vol = lambda r: r.std() * np.sqrt(252) * 100
     cvar = lambda r: r[r < np.percentile(r, 5)].mean() * np.sqrt(252) * 100
     downside_dev = lambda r: np.sqrt(np.mean(np.minimum(0, r) ** 2)) * np.sqrt(252) * 100
@@ -1163,8 +1163,8 @@ with tab9:
 
     stats_all = pd.DataFrame({
         "Return (%)": [
-            annual_return(naive_r),
-            annual_return(strat_r)
+            annual_return(naive_r) * 100,
+            annual_return(strat_r) * 100
         ],
         "Volatility (%)": [
             annual_vol(naive_r),
@@ -1183,8 +1183,8 @@ with tab9:
             max_drawdown(cum_strategy) * 100
         ],
         "Sharpe Ratio": [
-            sharpe_ratio(naive_r),
-            sharpe_ratio(strat_r)
+            sharpe_ratio(naive_r) / 100,
+            sharpe_ratio(strat_r) / 100
         ]
     }, index=["60/40 Only", "F&G Dyn. Strategy"])
 
