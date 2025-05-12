@@ -968,7 +968,7 @@ with tab8:
     threshold = var_series * sl_multiplier
     triggered = port_returns < threshold
 
-    min_bullish_to_reenter = 25
+    min_bullish_to_reenter = 40
 
     exposure = pd.Series(index=port_returns.index, dtype=float)
     exposure.iloc[0] = 1.0
