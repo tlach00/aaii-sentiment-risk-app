@@ -929,11 +929,9 @@ with tab7:
 
 
 # ---------------------------- TAB 8 ----------------------------------
-
 with tab8:
     st.markdown("## 📊 Full-Period Summary Metrics: F&G + Bullish Stop-Loss vs 60/40 Portfolio")
 
-    # Reuse from tab 6 logic for consistency
     spy = data["SPY"].pct_change()
     tlt = data["TLT"].pct_change()
     fng_series = fng_df["FNG_Index"]
@@ -971,7 +969,15 @@ with tab8:
         else:
             quiet_days += 1
             if quiet_days >= 3 and bullish_series.iloc[i] >= min_bullish_to_reenter:
-                exposure.iloc[i] = 1.0
+                fng = fng_series.iloc[i]
+                if fng > 75:
+                    exposure.iloc[i] = 1.0
+                elif fng > 50:
+                    exposure.iloc[i] = 0.8
+                elif fng > 25:
+                    exposure.iloc[i] = 0.5
+                else:
+                    exposure.iloc[i] = 0.3
             else:
                 exposure.iloc[i] = 0.3
 
@@ -982,7 +988,7 @@ with tab8:
     def max_drawdown(cum):
         roll_max = cum.cummax()
         drawdown = cum / roll_max - 1.0
-        return drawdown.min() * 100
+        return drawdown.min()
 
     naive_r = port_returns
     strat_r = strategy_returns
@@ -1005,36 +1011,21 @@ with tab8:
             np.sqrt(np.mean(np.minimum(0, strat_r)**2)) * np.sqrt(252) * 100
         ],
         "Max Drawdown (%)": [
-            max_drawdown(cum_naive),
-            max_drawdown(cum_strategy)
+            max_drawdown(cum_naive) * 100,
+            max_drawdown(cum_strategy) * 100
         ]
     }, index=["60/40 Only", "With F&G + Bullish SL"])
 
-    # Layout side-by-side
-    col1, col2 = st.columns([4, 1])
+    col1, col2 = st.columns([3, 1])
+
     with col1:
+        st.markdown("### 📈 Full Period Indexed Performance")
         fig = go.Figure()
-        fig.add_trace(go.Scatter(
-            x=cum_naive.index,
-            y=cum_naive / cum_naive.iloc[0],
-            name="60/40 Portfolio",
-            line=dict(color="navy")
-        ))
-        fig.add_trace(go.Scatter(
-            x=cum_strategy.index,
-            y=cum_strategy / cum_strategy.iloc[0],
-            name="With F&G + Bullish SL",
-            line=dict(color="skyblue")
-        ))
-        fig.update_layout(
-            title="📈 Full Period Indexed Performance",
-            yaxis_title="Indexed Value",
-            xaxis_title="Date",
-            height=500,
-            legend=dict(x=0.01, y=0.99)
-        )
+        fig.add_trace(go.Scatter(x=cum_naive.index, y=cum_naive / cum_naive.iloc[0], name="60/40 Portfolio", line=dict(color="navy")))
+        fig.add_trace(go.Scatter(x=cum_strategy.index, y=cum_strategy / cum_strategy.iloc[0], name="With F&G + Bullish SL", line=dict(color="skyblue")))
+        fig.update_layout(title="Full Period Indexed Performance", xaxis_title="Date", yaxis_title="Indexed Value", height=500)
         st.plotly_chart(fig, use_container_width=True)
 
     with col2:
-        st.markdown("### 📟 Risk Summary")
+        st.markdown("### 📋 Summary Table")
         st.dataframe(stats_all.round(2), use_container_width=True)
