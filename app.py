@@ -741,7 +741,7 @@ with tab7:
     st.markdown("## 🧨 F&G Stop-Loss Performance During Market Crises")
 
     crisis_periods = {
-        "2008 Crash": ("2007-10-01", "2009-04-01"),
+        "2008 Crash": ("2008-09-01", "2009-04-01"),
         "COVID Crash": ("2020-02-01", "2020-07-01"),
         "2022 Bear Market": ("2022-01-01", "2023-01-01")
     }
