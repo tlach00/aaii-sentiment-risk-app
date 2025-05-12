@@ -945,9 +945,7 @@ fig_1yr.add_trace(go.Scatter(
     shapes=[
     dict(type="line", x0=sub_index[0], x1=sub_index[0], yref="paper", y0=0, y1=1, line=dict(color="red", dash="dot")),
     dict(type="line", x0=sub_index[-1], x1=sub_index[-1], yref="paper", y0=0, y1=1, line=dict(color="red", dash="dot"))
-], x1=sub_index[0], yref="paper", y0=0, y1=1, line=dict(color="red", dash="dot")),
-        dict(type="line", x0=sub_index[-1], x1=sub_index[-1], yref="paper", y0=0, y1=1, line=dict(color="red", dash="dot"))
-    ]
+]
         st.plotly_chart(fig_1yr, use_container_width=True)
 
         # ➕ Add 6-month stats comparison
