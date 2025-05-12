@@ -858,6 +858,27 @@ with tab7:
 
 # ---------------------------- TAB 8 ----------------------------------
 with tab8:
+     st.markdown("### 📅 Last 1-Year Strategy Performance")
+    try:
+        last_year_start = port_returns.index[-252]  # Approximate 1 trading year
+        sub_index = cum_strategy.loc[last_year_start:].index
+
+        fig_1yr = go.Figure()
+        fig_1yr.add_trace(go.Scatter(
+            x=sub_index,
+            y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
+            name="60/40 Portfolio"
+        ))
+        fig_1yr.add_trace(go.Scatter(
+            x=sub_index,
+            y=cum_strategy.loc[sub_index] / cum_strategy.loc[sub_index[0]],
+            name="With F&G + Bullish Stop-Loss"
+        ))
+        fig_1yr.update_layout(title="1-Year Indexed Performance", yaxis_title="Indexed Value", height=400)
+        st.plotly_chart(fig_1yr, use_container_width=True)
+    except Exception as e:
+        st.warning(f"⚠️ Could not generate 1-year comparison: {e}")
+        
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
     crisis_periods = {
