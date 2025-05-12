@@ -429,8 +429,8 @@ with tab4:
         var_hist.append(np.percentile(sample, 100 * hist_alpha))
         cvar_hist.append(sample[sample < np.percentile(sample, 100 * hist_alpha)].mean())
 
-        var_fng.append(np.percentile(sample, 100 * alpha))
-        cvar_fng.append(sample[sample < np.percentile(sample, 100 * alpha)].mean())
+        var_fng.append(np.percentile(sample, 100 * (1 - alpha)))
+        cvar_fng.append(sample[sample < np.percentile(sample, 100 * (1 - alpha))].mean())
 
     idx = returns.index[window:]
     spy_norm = data["SPY"].reindex(idx) / data["SPY"].reindex(idx).iloc[0] * 100
