@@ -246,7 +246,6 @@ with tab3:
 # ---------------------------- TAB 4 ----------------------------
 with tab4:
     import plotly.graph_objects as go
-    import numpy as np
 
     st.markdown("## 🧐 CNN-Style Fear & Greed Replication")
 
@@ -333,16 +332,19 @@ with tab4:
 
     fig_fng = go.Figure()
 
+    # F&G Index
     fig_fng.add_trace(go.Scatter(
         x=fng_df.index, y=fng_df["FNG_Index"],
         name="F&G Index", mode="lines", yaxis="y1"
     ))
 
+    # 100-day MA
     fig_fng.add_trace(go.Scatter(
         x=fng_df.index, y=fng_df["FNG_Smooth"],
         name="100-day MA", mode="lines", line=dict(color="red"), yaxis="y1"
     ))
 
+    # S&P 500 or SPY price
     spy_price = data["SPY"].reindex(fng_df.index)
     fig_fng.add_trace(go.Scatter(
         x=spy_price.index, y=spy_price,
@@ -351,7 +353,9 @@ with tab4:
 
     fig_fng.update_layout(
         yaxis=dict(title="F&G Index (0–100)", range=[0, 100]),
-        yaxis2=dict(title="SPY Price", overlaying="y", side="right", showgrid=False),
+        yaxis2=dict(
+            title="SPY Price", overlaying="y", side="right", showgrid=False
+        ),
         xaxis=dict(title="Date"),
         shapes=[
             dict(type="rect", xref="x", yref="y", x0=fng_df.index[0], x1=fng_df.index[-1], y0=0, y1=25,
@@ -365,8 +369,9 @@ with tab4:
 
     st.plotly_chart(fig_fng, use_container_width=True)
 
+    # 📊 Distribution + stats below
     st.markdown("### 📊 Distribution of the F&G Index (2007–Today)")
-    st.markdown("This histogram shows the distribution of the CNN-style Fear & Greed Index since 2007.")
+    st.markdown("This histogram shows the distribution of the CNN-style Fear & Greed Index since 2007. Vertical lines mark key sentiment thresholds.")
 
     col_left, col_right = st.columns([3, 1])
 
@@ -408,48 +413,6 @@ with tab4:
         }
         st.markdown("#### 📋 Summary Stats")
         st.dataframe(pd.DataFrame(stats, index=["Value"]).T, use_container_width=True)
-
-    # === Add adjusted VaR/CVaR plot at bottom ===
-    st.markdown("### 🔎 F&G-Adjusted vs Historical VaR (logistic α(t))")
-
-    returns = data["SPY"].pct_change().dropna()
-    fng_series = fng_df["FNG_Index"].reindex(returns.index).fillna(method="ffill")
-
-    window = 100
-    var_hist, cvar_hist = [], []
-    var_fng, cvar_fng = [], []
-
-    for i in range(window, len(returns)):
-        sample = returns.iloc[i - window:i]
-        hist_alpha = 0.05
-
-        # ✅ Improved nonlinear alpha using logistic transformation
-        alpha = 1 / (1 + np.exp(-(50 - fng_series.iloc[i]) / 7))
-        alpha = np.clip(alpha, 0.0001, 0.9999)  # avoid invalid percentile
-
-        var_hist.append(np.percentile(sample, 100 * hist_alpha))
-        cvar_hist.append(sample[sample < np.percentile(sample, 100 * hist_alpha)].mean())
-
-        var_fng.append(np.percentile(sample, 100 * (1 - alpha)))
-        cvar_fng.append(sample[sample < np.percentile(sample, 100 * (1 - alpha))].mean())
-
-    idx = returns.index[window:]
-    spy_norm = data["SPY"].reindex(idx) / data["SPY"].reindex(idx).iloc[0] * 100
-
-    fig_risk = go.Figure()
-    fig_risk.add_trace(go.Scatter(x=idx, y=var_hist, name="Historical VaR", line=dict(color="blue", dash="dot")))
-    fig_risk.add_trace(go.Scatter(x=idx, y=cvar_hist, name="Historical CVaR", line=dict(color="darkblue", dash="dot")))
-    fig_risk.add_trace(go.Scatter(x=idx, y=var_fng, name="F&G Adjusted VaR", line=dict(color="red")))
-    fig_risk.add_trace(go.Scatter(x=idx, y=cvar_fng, name="F&G Adjusted CVaR", line=dict(color="darkred")))
-    fig_risk.add_trace(go.Scatter(x=idx, y=spy_norm, name="S&P 500 (Indexed)", yaxis="y2", line=dict(color="black")))
-
-    fig_risk.update_layout(
-        title="Rolling VaR & CVaR vs S&P 500 (Indexed)",
-        yaxis=dict(title="VaR / CVaR"),
-        yaxis2=dict(title="S&P 500", overlaying="y", side="right", showgrid=False),
-        height=500
-    )
-    st.plotly_chart(fig_risk, use_container_width=True)
 
 
 # ---------------- tab 5 ----------------
