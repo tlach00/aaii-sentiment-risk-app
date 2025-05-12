@@ -790,7 +790,11 @@ with tab7:
     strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
     cum_strategy = (1 + strategy_returns).cumprod()
     cum_naive = (1 + port_returns).cumprod()
-    cum_vix = (1 + vix).cumprod()
+
+    # ✅ VIX-based strategy: reduce exposure when VIX spikes
+    vix_exposure = vix.apply(lambda x: 0.3 if x > 0.02 else 1.0)
+    vix_strategy_returns = port_returns * vix_exposure.shift(1).fillna(1.0)
+    cum_vix_strategy = (1 + vix_strategy_returns).cumprod()
 
     for label, (start, end) in crisis_periods.items():
         st.markdown(f"### 📉 {label}")
@@ -800,25 +804,28 @@ with tab7:
             end_idx = sub_index[-1]
 
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=sub_index, y=cum_naive.loc[sub_index] / cum_naive.loc[start_idx],
-                                     name="60/40 Portfolio"))
-            fig.add_trace(go.Scatter(x=sub_index, y=cum_strategy.loc[sub_index] / cum_strategy.loc[start_idx],
-                                     name="With F&G + Bullish Stop-Loss"))
+            fig.add_trace(go.Scatter(
+                x=sub_index, y=cum_naive.loc[sub_index] / cum_naive.loc[start_idx],
+                name="60/40 Portfolio"
+            ))
+            fig.add_trace(go.Scatter(
+                x=sub_index, y=cum_strategy.loc[sub_index] / cum_strategy.loc[start_idx],
+                name="With F&G + Bullish Stop-Loss"
+            ))
 
             if show_vix:
                 fig.add_trace(go.Scatter(
-                    x=sub_index,
-                    y=cum_vix.loc[sub_index] / cum_vix.loc[start_idx],
-                    name="VIX Indexed",
-                    line=dict(dash="dot", color="purple")
+                    x=sub_index, y=cum_vix_strategy.loc[sub_index] / cum_vix_strategy.loc[start_idx],
+                    name="With VIX Strategy", line=dict(dash="dash", color="orange")
                 ))
 
             fig.update_layout(title=f"Performance Comparison During {label}", yaxis_title="Indexed Value", height=400)
             st.plotly_chart(fig, use_container_width=True)
 
+            # Return slices
             naive_r = port_returns.loc[start_idx:end_idx]
             strat_r = strategy_returns.loc[start_idx:end_idx]
-            vix_r = vix.loc[start_idx:end_idx]
+            vix_strat_r = vix_strategy_returns.loc[start_idx:end_idx]
 
             def max_drawdown(cum):
                 roll_max = cum.cummax()
@@ -829,23 +836,30 @@ with tab7:
                 "Return (%)": [
                     (cum_naive.loc[end_idx] / cum_naive.loc[start_idx] - 1) * 100,
                     (cum_strategy.loc[end_idx] / cum_strategy.loc[start_idx] - 1) * 100,
-                    (cum_vix.loc[end_idx] / cum_vix.loc[start_idx] - 1) * 100 if show_vix else np.nan
+                    (cum_vix_strategy.loc[end_idx] / cum_vix_strategy.loc[start_idx] - 1) * 100 if show_vix else np.nan
                 ],
                 "Volatility (%)": [
                     naive_r.std() * np.sqrt(252) * 100,
                     strat_r.std() * np.sqrt(252) * 100,
-                    vix_r.std() * np.sqrt(252) * 100 if show_vix else np.nan
+                    vix_strat_r.std() * np.sqrt(252) * 100 if show_vix else np.nan
                 ],
                 "CVaR (95%) (%)": [
                     naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
                     strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100,
-                    vix_r[vix_r < np.percentile(vix_r, 5)].mean() * 100 if show_vix else np.nan
+                    vix_strat_r[vix_strat_r < np.percentile(vix_strat_r, 5)].mean() * 100 if show_vix else np.nan
                 ],
                 "Downside Dev. (%)": [
-                    np.sqrt(np.mean(np.minimum(0, naive_r)**2)) * np.sqrt(252) * 100,
-                    np.sqrt(np.mean(np.minimum(0, strat_r)**2)) * np.sqrt(252) * 100,
-                    np.sqrt(np.mean(np.minimum(0, vix_r)**2)) * np.sqrt(252) * 100 if show_vix else np.nan
+                    np.sqrt(np.mean(np.minimum(0, naive_r) ** 2)) * np.sqrt(252) * 100,
+                    np.sqrt(np.mean(np.minimum(0, strat_r) ** 2)) * np.sqrt(252) * 100,
+                    np.sqrt(np.mean(np.minimum(0, vix_strat_r) ** 2)) * np.sqrt(252) * 100 if show_vix else np.nan
                 ],
                 "Max Drawdown (%)": [
-                    max_drawdown(cum_naive.loc[start_idx:end_idx])
+                    max_drawdown(cum_naive.loc[start_idx:end_idx]) * 100,
+                    max_drawdown(cum_strategy.loc[start_idx:end_idx]) * 100,
+                    max_drawdown(cum_vix_strategy.loc[start_idx:end_idx]) * 100 if show_vix else np.nan
+                ]
+            }, index=["60/40 Only", "With F&G Stop-Loss", "With VIX Strategy" if show_vix else ""])
 
+            st.dataframe(stats.round(2))
+        except Exception as e:
+            st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
