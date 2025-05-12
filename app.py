@@ -784,20 +784,43 @@ with tab7:
         st.markdown(f"### 📉 {label}")
         try:
             sub_index = cum_strategy.loc[start:end].index
+            start_idx = sub_index[0]
+            end_idx = sub_index[-1]
+
             fig = go.Figure()
-            fig.add_trace(go.Scatter(x=sub_index, y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
+            fig.add_trace(go.Scatter(x=sub_index, y=cum_naive.loc[sub_index] / cum_naive.loc[start_idx],
                                      name="SPY Only"))
-            fig.add_trace(go.Scatter(x=sub_index, y=cum_strategy.loc[sub_index] / cum_strategy.loc[sub_index[0]],
+            fig.add_trace(go.Scatter(x=sub_index, y=cum_strategy.loc[sub_index] / cum_strategy.loc[start_idx],
                                      name="With F&G Stop-Loss"))
             fig.update_layout(title=f"Performance Comparison During {label}", yaxis_title="Indexed Value", height=400)
             st.plotly_chart(fig, use_container_width=True)
 
+            naive_r = spy.loc[start_idx:end_idx]
+            strat_r = strategy_returns.loc[start_idx:end_idx]
+
+            def max_drawdown(cum):
+                roll_max = cum.cummax()
+                drawdown = cum / roll_max - 1.0
+                return drawdown.min()
+
             stats = pd.DataFrame({
                 "Return (%)": [
-                    (cum_naive.loc[end] / cum_naive.loc[start] - 1) * 100,
-                    (cum_strategy.loc[end] / cum_strategy.loc[start] - 1) * 100
+                    (cum_naive.loc[end_idx] / cum_naive.loc[start_idx] - 1) * 100,
+                    (cum_strategy.loc[end_idx] / cum_strategy.loc[start_idx] - 1) * 100
+                ],
+                "Volatility (%)": [naive_r.std() * np.sqrt(252) * 100, strat_r.std() * np.sqrt(252) * 100],
+                "CVaR (95%) (%)": [naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
+                                   strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100],
+                "Downside Dev. (%)": [
+                    np.sqrt(np.mean(np.minimum(0, naive_r) ** 2)) * np.sqrt(252) * 100,
+                    np.sqrt(np.mean(np.minimum(0, strat_r) ** 2)) * np.sqrt(252) * 100
+                ],
+                "Max Drawdown (%)": [
+                    max_drawdown(cum_naive.loc[start_idx:end_idx]) * 100,
+                    max_drawdown(cum_strategy.loc[start_idx:end_idx]) * 100
                 ]
             }, index=["SPY Only", "With Stop-Loss"])
+
             st.dataframe(stats.round(2))
-        except KeyError:
-            st.warning(f"⚠️ Skipping {label} — dates may be outside available data.")
+        except Exception as e:
+            st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
