@@ -537,7 +537,7 @@ with tab5:
 
 
 
-# ---------------------------- TAB 6 ----------------------------------
+ #---------------------------- TAB 6 ----------------------------------
 with tab6:
     st.markdown("""
 ### 🧠 Distribution of SPY Returns with Historical, F&G, and Bullish Sentiment–Adjusted VaR:  
@@ -554,169 +554,157 @@ These sentiment-based models allow VaR thresholds to adapt to investor emotion:
 - In **bullish regimes**, risk tolerance is higher, and thresholds tighten
 """)
 
-# ---------------------------- TAB 7 ----------------------------------
-with tab7:
-    st.markdown("## ⚖️ F&G-Adjusted Stop-Loss with Bullish Sentiment Re-entry (60/40 Portfolio)")
-    st.markdown("""
-### 🧠 Strategy Overview
+    investment = 1_000_000
+    confidence_level = 0.95
+    alpha = 1 - confidence_level
+    lookback_days = 252 * 5
 
-This strategy dynamically reduces portfolio exposure during high-risk periods using:
-- **Value at Risk (VaR)**: 5% rolling quantile of recent 100-day returns
-- **Fear & Greed (F&G) Index**: Determines how aggressively to scale back exposure:
-  - Lower sentiment → higher stop-loss multiplier
-  - Higher sentiment → tighter thresholds
+    spy_prices = data["SPY"].dropna()
+    spy_returns = spy_prices.pct_change().dropna()
+    spy_returns = spy_returns[-lookback_days:]
 
-When a return breach occurs (i.e., below the F&G-adjusted VaR), exposure drops to **30%**.
-It only returns to normal levels when:
-- Bullish sentiment rises above a user-defined threshold (default: 30%)
-- At least 3 quiet days have passed
+    # === Static VaR & CVaR
+    sorted_returns = np.sort(spy_returns.values)
+    var_hist = np.percentile(sorted_returns, alpha * 100)
+    cvar_hist = sorted_returns[sorted_returns <= var_hist].mean()
 
-### 🔍 Interpretation of the Chart
-- The plot compares **indexed performance** of the raw 60/40 portfolio and the **strategy with stop-loss and bullish sentiment re-entry**
-- The strategy aims to **limit drawdowns** during downturns and re-enter at favorable sentiment conditions
+    mu = spy_returns.mean()
+    sigma = spy_returns.std()
+    from scipy.stats import norm
+    var_param = norm.ppf(alpha, mu, sigma)
+    cvar_param = mu - sigma * norm.pdf(norm.ppf(alpha)) / alpha
 
-### 📟 Trigger Table
-- The second table breaks down how many stop-loss events were triggered per year and regime
-  (Extreme Fear, Fear, Greed, Extreme Greed)
+    np.random.seed(42)
+    sim_returns = np.random.normal(mu, sigma, 100000)
+    var_mc = np.percentile(sim_returns, alpha * 100)
+    cvar_mc = sim_returns[sim_returns <= var_mc].mean()
 
-### 📋 Summary Table
-- This compares performance metrics:
-  - Return
-  - Volatility
-  - Conditional VaR (CVaR)
-  - Downside Deviation
-  - Max Drawdown
+    # === Rolling Window
+    st.markdown("### 📏 Select Rolling Window Length")
+    window = st.slider("Rolling Window (days)", min_value=100, max_value=500, value=252, step=10)
 
-The goal: **enhance downside protection** while participating in upside trends using a **sentiment-aware risk overlay**.
-""")
+    # === Full series + F&G/Bullish sentiment alignment
+    full_returns = data["SPY"].pct_change().dropna()
+    fng_series = fng_df["FNG_Index"].reindex(full_returns.index).dropna()
+    bullish_series = clean_df.set_index("Date")["Bullish"].reindex(full_returns.index).fillna(method="ffill")
+    full_returns = full_returns.loc[fng_series.index.intersection(bullish_series.index)]
 
+    # === Adjusted alphas
+    fng_alpha = 0.01 + ((100 - fng_series) / 100) * 0.09
+    fng_alpha = fng_alpha.clip(0.01, 0.2)
 
-    # Add adjustable start date selector
-    available_dates = data.index.intersection(fng_df.index)
-    default_start = available_dates[0].date()
-    selected_start = st.date_input("Select portfolio start date:", value=default_start, min_value=default_start, max_value=available_dates[-1].date())
-    selected_start = pd.to_datetime(selected_start)
+    bullish_alpha = 0.01 + (bullish_series / 100) * 0.09
+    bullish_alpha = bullish_alpha.clip(0.01, 0.2)
 
-    exposure_floor = 0.3
-    exposure_ceiling = 1.0
-    bullish_threshold = st.slider("Minimum Bullish Sentiment to Re-enter Market (%)", 0, 100, 30)
+    # === Adjusted VaR/CVaR computation
+    adjusted_var = pd.Series(index=full_returns.index, dtype=float)
+    adjusted_cvar = pd.Series(index=full_returns.index, dtype=float)
+    bullish_var = pd.Series(index=full_returns.index, dtype=float)
+    bullish_cvar = pd.Series(index=full_returns.index, dtype=float)
 
-    spy = data["SPY"].pct_change()
-    tlt = data["TLT"].pct_change()
-    fng_series = fng_df["FNG_Index"]
+    for date in full_returns.index[window:]:
+        past = full_returns.loc[:date].iloc[-window:]
 
-    common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
-    common_idx = common_idx[common_idx >= selected_start]  # Apply selected start date
+        alpha_fng = fng_alpha.loc[date]
+        v1 = np.percentile(past, alpha_fng * 100)
+        cv1 = past[past <= v1].mean()
+        adjusted_var.loc[date] = v1
+        adjusted_cvar.loc[date] = cv1
 
-    spy = spy.loc[common_idx]
-    tlt = tlt.loc[common_idx]
-    fng_series = fng_series.loc[common_idx]
-    port_returns = (0.6 * spy + 0.4 * tlt).dropna()
+        alpha_bull = bullish_alpha.loc[date]
+        v2 = np.percentile(past, alpha_bull * 100)
+        cv2 = past[past <= v2].mean()
+        bullish_var.loc[date] = v2
+        bullish_cvar.loc[date] = cv2
 
-    var_series = port_returns.rolling(window=100).apply(lambda x: np.percentile(x, 5)).dropna()
-    common_idx = port_returns.index.intersection(var_series.index)
-    port_returns = port_returns.loc[common_idx]
-    var_series = var_series.loc[common_idx]
-    fng_series = fng_series.loc[common_idx]
+    # === Rolling historical VaR/CVaR
+    rolling_var = full_returns.rolling(window).quantile(alpha)
+    rolling_cvar = full_returns.rolling(window).apply(lambda x: x[x <= x.quantile(alpha)].mean(), raw=False)
 
-    def stop_loss_multiplier_from_fng(fng):
-        if fng < 25: return 1.5
-        elif fng < 50: return 1.2
-        elif fng < 75: return 1.0
-        else: return 0.8
+    # === Latest snapshot
+    latest_adj_var = adjusted_var.dropna().iloc[-1]
+    latest_adj_cvar = adjusted_cvar.dropna().iloc[-1]
+    latest_bull_var = bullish_var.dropna().iloc[-1]
+    latest_bull_cvar = bullish_cvar.dropna().iloc[-1]
 
-    sl_multiplier = fng_series.apply(stop_loss_multiplier_from_fng)
-    stop_loss_threshold = var_series * sl_multiplier
-    triggered = port_returns < stop_loss_threshold
-
-    bullish_series = clean_df.set_index("Date")["Bullish"].resample("D").ffill()
-    bullish_series = bullish_series.reindex(port_returns.index, method="ffill")
-
-    var_scaled = (var_series - var_series.min()) / (var_series.max() - var_series.min())
-    dynamic_exposure = exposure_ceiling - var_scaled * (exposure_ceiling - exposure_floor)
-    dynamic_exposure = dynamic_exposure.clip(exposure_floor, exposure_ceiling)
-
-    exposure_series = pd.Series(index=port_returns.index, dtype=float)
-    for i, date in enumerate(port_returns.index):
-        if i == 0:
-            exposure_series.iloc[i] = dynamic_exposure.iloc[i]
-        else:
-            if triggered.iloc[i]:
-                exposure_series.iloc[i] = exposure_floor
-            else:
-                if bullish_series.iloc[i] >= bullish_threshold:
-                    exposure_series.iloc[i] = dynamic_exposure.iloc[i]
-                else:
-                    exposure_series.iloc[i] = exposure_floor
-
-    adjusted_returns = port_returns * exposure_series.shift(1).fillna(exposure_ceiling)
-    cumulative_return = (1 + adjusted_returns).cumprod()
-    cumulative_no_sl = (1 + port_returns).cumprod()
-
-    st.markdown("### 📈 60/40 Portfolio: Raw vs Stop-Loss + Bullish Filter")
+    # === Histogram Plot
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=cumulative_no_sl.index, y=cumulative_no_sl / cumulative_no_sl.iloc[0], name="60/40 No Stop-Loss"))
-    fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return / cumulative_return.iloc[0], name="60/40 with SL + Bullish Re-entry"))
-    fig.update_layout(title="Indexed Portfolio Value", yaxis_title="Value", xaxis_title="Date")
+    fig.add_trace(go.Histogram(x=spy_returns * 100, nbinsx=100, name="SPY Returns", marker_color="#cce5ff", opacity=0.75))
+    fig.add_trace(go.Scatter(x=[var_hist * 100]*2, y=[0, 100], name="VaR (Hist)", line=dict(color="#66b3ff")))
+    fig.add_trace(go.Scatter(x=[var_param * 100]*2, y=[0, 100], name="VaR (Parametric)", line=dict(color="green", dash="dash")))
+    fig.add_trace(go.Scatter(x=[var_mc * 100]*2, y=[0, 100], name="VaR (Monte Carlo)", line=dict(color="orange", dash="dot")))
+    fig.add_trace(go.Scatter(x=[cvar_hist * 100]*2, y=[0, 100], name="CVaR (Hist)", line=dict(color="#004080", dash="dot")))
+    fig.add_trace(go.Scatter(x=[cvar_param * 100]*2, y=[0, 100], name="CVaR (Parametric)", line=dict(color="darkgreen", dash="dot")))
+    fig.add_trace(go.Scatter(x=[cvar_mc * 100]*2, y=[0, 100], name="CVaR (Monte Carlo)", line=dict(color="darkorange", dash="dot")))
+    fig.add_trace(go.Scatter(x=[latest_adj_var * 100]*2, y=[0, 100], name="F&G Adj. VaR", line=dict(color="#ff6666", dash="dot")))
+    fig.add_trace(go.Scatter(x=[latest_adj_cvar * 100]*2, y=[0, 100], name="F&G Adj. CVaR", line=dict(color="#800000", dash="dot")))
+    fig.add_trace(go.Scatter(x=[latest_bull_var * 100]*2, y=[0, 100], name="Bullish Adj. VaR", line=dict(color="#33cc33", dash="dot")))
+    fig.add_trace(go.Scatter(x=[latest_bull_cvar * 100]*2, y=[0, 100], name="Bullish Adj. CVaR", line=dict(color="#006600", dash="dot")))
+    fig.update_layout(title="Distribution of SPY Returns & Sentiment-Adjusted Risk Thresholds", height=600)
     st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("### 📟 Stop-Loss Trigger Stats by Sentiment Regime")
+    # === Rolling time series comparison
+    indexed_price = (spy_prices / spy_prices.loc[adjusted_var.dropna().index[0]]) * 100
+    indexed_price = indexed_price.reindex(adjusted_var.index)
 
-    def classify_regime(fng):
-        if fng < 25: return "Extreme Fear"
-        elif fng < 50: return "Fear"
-        elif fng < 75: return "Greed"
-        else: return "Extreme Greed"
-
-    regime_series = fng_series.apply(classify_regime)
-    trigger_df = pd.DataFrame({
-        "Year": triggered.index.year,
-        "Triggered": triggered,
-        "Regime": regime_series
-    })
-
-    summary = (
-        trigger_df[trigger_df["Triggered"]]
-        .groupby(["Year", "Regime"])
-        .size()
-        .unstack(fill_value=0)
+    fig_combined = go.Figure()
+    fig_combined.add_trace(go.Scatter(x=rolling_var.index, y=rolling_var * 100, name="Hist. VaR", line=dict(color="#66b3ff")))
+    fig_combined.add_trace(go.Scatter(x=rolling_cvar.index, y=rolling_cvar * 100, name="Hist. CVaR", line=dict(color="#004080")))
+    fig_combined.add_trace(go.Scatter(x=adjusted_var.index, y=adjusted_var * 100, name="F&G Adj. VaR", line=dict(color="#ff6666", dash="dot")))
+    fig_combined.add_trace(go.Scatter(x=adjusted_cvar.index, y=adjusted_cvar * 100, name="F&G Adj. CVaR", line=dict(color="#800000", dash="dot")))
+    fig_combined.add_trace(go.Scatter(x=bullish_var.index, y=bullish_var * 100, name="Bullish Adj. VaR", line=dict(color="#33cc33", dash="dot")))
+    fig_combined.add_trace(go.Scatter(x=bullish_cvar.index, y=bullish_cvar * 100, name="Bullish Adj. CVaR", line=dict(color="#006600", dash="dot")))
+    fig_combined.add_trace(go.Scatter(x=indexed_price.index, y=indexed_price, name="S&P 500 Indexed", line=dict(color="black"), yaxis="y2"))
+    fig_combined.update_layout(
+        title="📉 Rolling VaR & CVaR vs S&P 500 (Indexed)",
+        xaxis=dict(title="Date"),
+        yaxis=dict(title="VaR / CVaR (%)"),
+        yaxis2=dict(title="S&P 500 (Indexed)", overlaying="y", side="right", showgrid=False),
+        height=600
     )
+    st.plotly_chart(fig_combined, use_container_width=True)
 
-    st.dataframe(summary)
-
-    st.markdown("### 📋 Strategy Summary Table")
-
-    def max_drawdown(cum):
-        roll_max = cum.cummax()
-        return (cum / roll_max - 1).min()
-
-    strat_r = adjusted_returns
-    naive_r = port_returns
-
-    stats_summary = pd.DataFrame({
-        "Return (%)": [
-            (cumulative_no_sl.iloc[-1] / cumulative_no_sl.iloc[0] - 1) * 100,
-            (cumulative_return.iloc[-1] / cumulative_return.iloc[0] - 1) * 100
+    # === Table
+    st.markdown("### 📊 Comparison Table (Latest Values)")
+    summary_df = pd.DataFrame({
+        "VaR (%)": [
+            var_hist * 100, var_param * 100, var_mc * 100,
+            latest_adj_var * 100, latest_bull_var * 100
         ],
-        "Volatility (%)": [
-            naive_r.std() * np.sqrt(252) * 100,
-            strat_r.std() * np.sqrt(252) * 100
+        "CVaR (%)": [
+            cvar_hist * 100, cvar_param * 100, cvar_mc * 100,
+            latest_adj_cvar * 100, latest_bull_cvar * 100
         ],
-        "CVaR (95%) (%)": [
-            naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
-            strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100
+        "VaR ($)": [
+            -var_hist * investment, -var_param * investment, -var_mc * investment,
+            -latest_adj_var * investment, -latest_bull_var * investment
         ],
-        "Downside Dev. (%)": [
-            np.sqrt(np.mean(np.minimum(0, naive_r) ** 2)) * np.sqrt(252) * 100,
-            np.sqrt(np.mean(np.minimum(0, strat_r) ** 2)) * np.sqrt(252) * 100
-        ],
-        "Max Drawdown (%)": [
-            max_drawdown(cumulative_no_sl) * 100,
-            max_drawdown(cumulative_return) * 100
+        "CVaR ($)": [
+            -cvar_hist * investment, -cvar_param * investment, -cvar_mc * investment,
+            -latest_adj_cvar * investment, -latest_bull_cvar * investment
         ]
-    }, index=["60/40 Only", "With SL + Bullish Re-entry"])
+    }, index=["Historical", "Parametric", "Monte Carlo", "F&G Adj.", "Bullish Adj."])
+    st.dataframe(summary_df.round(2), use_container_width=True, height=400)
 
-    st.dataframe(stats_summary.round(2), use_container_width=True)
+    # === Formulas
+    st.markdown("""
+### 🧮 Adjusted VaR Formulas
+
+- **F&G Adjusted VaR**:
+  $$ \\alpha(t) = 0.01 + \\left( \\frac{100 - \\text{F\\&G}(t)}{100} \\right) \\cdot 0.09 $$
+
+- **Bullish Adjusted VaR**:
+  $$ \\alpha(t) = 0.01 + \\left( \\frac{100 - \\text{Bullish}(t)}{100} \\right) \\cdot 0.09 $$
+""")
+
+    # === Breach Frequency
+    st.markdown("### ❗ Breach Frequency")
+    breach_df = pd.DataFrame({
+        "Historical VaR Breaches": (full_returns.loc[rolling_var.index] < rolling_var).mean() * 100,
+        "F&G Adj. VaR Breaches": (full_returns.loc[adjusted_var.index] < adjusted_var).mean() * 100,
+        "Bullish Adj. VaR Breaches": (full_returns.loc[bullish_var.index] < bullish_var).mean() * 100,
+    }, index=["% of Days"]).T
+    st.dataframe(breach_df.round(2), use_container_width=True)
 
 
 # ---------------------------- TAB 8 ----------------------------------
