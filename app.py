@@ -939,84 +939,84 @@ with tab7:
 # ---------------------------- TAB 8 ----------------------------------
 
 with tab8:
-        st.markdown("## 📊 Full-Period Summary Metrics: F\&G + Bullish Stop-Loss vs 60/40 Portfolio")
-        
-        ```
-        # Reuse from tab 6 logic for consistency
-        spy = data["SPY"].pct_change()
-        tlt = data["TLT"].pct_change()
-        fng_series = fng_df["FNG_Index"]
-        bullish_series = load_clean_data().set_index("Date")["Bullish"].reindex(spy.index).fillna(method="ffill")
-        
-        common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
-        spy = spy.loc[common_idx]
-        tlt = tlt.loc[common_idx]
-        fng_series = fng_series.loc[common_idx]
-        bullish_series = bullish_series.loc[common_idx]
-        
-        port_returns = (0.6 * spy + 0.4 * tlt)
-        var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
-        var_series = var_series.reindex(port_returns.index, method="ffill")
-        
-        def stop_loss_multiplier(fng):
-            if fng < 25: return 1.5
-            elif fng < 50: return 1.2
-            elif fng < 75: return 1.0
-            else: return 0.8
-        
-        sl_multiplier = fng_series.apply(stop_loss_multiplier)
-        threshold = var_series * sl_multiplier
-        triggered = port_returns < threshold
-        
-        min_bullish_to_reenter = 40
-        exposure = pd.Series(index=port_returns.index, dtype=float)
-        exposure.iloc[0] = 1.0
+st.markdown("## 📊 Full-Period Summary Metrics: F\&G + Bullish Stop-Loss vs 60/40 Portfolio")
+
+```
+# Reuse from tab 6 logic for consistency
+spy = data["SPY"].pct_change()
+tlt = data["TLT"].pct_change()
+fng_series = fng_df["FNG_Index"]
+bullish_series = load_clean_data().set_index("Date")["Bullish"].reindex(spy.index).fillna(method="ffill")
+
+common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
+spy = spy.loc[common_idx]
+tlt = tlt.loc[common_idx]
+fng_series = fng_series.loc[common_idx]
+bullish_series = bullish_series.loc[common_idx]
+
+port_returns = (0.6 * spy + 0.4 * tlt)
+var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
+var_series = var_series.reindex(port_returns.index, method="ffill")
+
+def stop_loss_multiplier(fng):
+    if fng < 25: return 1.5
+    elif fng < 50: return 1.2
+    elif fng < 75: return 1.0
+    else: return 0.8
+
+sl_multiplier = fng_series.apply(stop_loss_multiplier)
+threshold = var_series * sl_multiplier
+triggered = port_returns < threshold
+
+min_bullish_to_reenter = 40
+exposure = pd.Series(index=port_returns.index, dtype=float)
+exposure.iloc[0] = 1.0
+quiet_days = 0
+for i in range(1, len(port_returns)):
+    if triggered.iloc[i]:
+        exposure.iloc[i] = 0.3
         quiet_days = 0
-        for i in range(1, len(port_returns)):
-            if triggered.iloc[i]:
-                exposure.iloc[i] = 0.3
-                quiet_days = 0
-            else:
-                quiet_days += 1
-                if quiet_days >= 3 and bullish_series.iloc[i] >= min_bullish_to_reenter:
-                    exposure.iloc[i] = 1.0
-                else:
-                    exposure.iloc[i] = 0.3
-        
-        strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
-        cum_strategy = (1 + strategy_returns).cumprod()
-        cum_naive = (1 + port_returns).cumprod()
-        
-        def max_drawdown(cum):
-            roll_max = cum.cummax()
-            drawdown = cum / roll_max - 1.0
-            return drawdown.min()
-        
-        naive_r = port_returns
-        strat_r = strategy_returns
-        
-        stats_all = pd.DataFrame({
-            "Return (%)": [
-                (cum_naive.iloc[-1] / cum_naive.iloc[0] - 1) * 100,
-                (cum_strategy.iloc[-1] / cum_strategy.iloc[0] - 1) * 100
-            ],
-            "Volatility (%)": [
-                naive_r.std() * np.sqrt(252) * 100,
-                strat_r.std() * np.sqrt(252) * 100
-            ],
-            "CVaR (95%) (%)": [
-                naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
-                strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100
-            ],
-            "Downside Dev. (%)": [
-                np.sqrt(np.mean(np.minimum(0, naive_r)**2)) * np.sqrt(252) * 100,
-                np.sqrt(np.mean(np.minimum(0, strat_r)**2)) * np.sqrt(252) * 100
-            ],
-            "Max Drawdown (%)": [
-                max_drawdown(cum_naive) * 100,
-                max_drawdown(cum_strategy) * 100
-            ]
-        }, index=["60/40 Only", "With F&G + Bullish SL"])
-        
-        st.dataframe(stats_all.round(2))
-        ```
+    else:
+        quiet_days += 1
+        if quiet_days >= 3 and bullish_series.iloc[i] >= min_bullish_to_reenter:
+            exposure.iloc[i] = 1.0
+        else:
+            exposure.iloc[i] = 0.3
+
+strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
+cum_strategy = (1 + strategy_returns).cumprod()
+cum_naive = (1 + port_returns).cumprod()
+
+def max_drawdown(cum):
+    roll_max = cum.cummax()
+    drawdown = cum / roll_max - 1.0
+    return drawdown.min()
+
+naive_r = port_returns
+strat_r = strategy_returns
+
+stats_all = pd.DataFrame({
+    "Return (%)": [
+        (cum_naive.iloc[-1] / cum_naive.iloc[0] - 1) * 100,
+        (cum_strategy.iloc[-1] / cum_strategy.iloc[0] - 1) * 100
+    ],
+    "Volatility (%)": [
+        naive_r.std() * np.sqrt(252) * 100,
+        strat_r.std() * np.sqrt(252) * 100
+    ],
+    "CVaR (95%) (%)": [
+        naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
+        strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100
+    ],
+    "Downside Dev. (%)": [
+        np.sqrt(np.mean(np.minimum(0, naive_r)**2)) * np.sqrt(252) * 100,
+        np.sqrt(np.mean(np.minimum(0, strat_r)**2)) * np.sqrt(252) * 100
+    ],
+    "Max Drawdown (%)": [
+        max_drawdown(cum_naive) * 100,
+        max_drawdown(cum_strategy) * 100
+    ]
+}, index=["60/40 Only", "With F&G + Bullish SL"])
+
+st.dataframe(stats_all.round(2))
+```
