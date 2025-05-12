@@ -926,7 +926,10 @@ with tab7:
             st.dataframe(stats.round(2))
         except Exception as e:
             st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
+
+
 # ---------------------------- TAB 8 ----------------------------------
+
 with tab8:
     st.markdown("## 📊 Full-Period Summary Metrics: F&G + Bullish Stop-Loss vs 60/40 Portfolio")
 
@@ -979,7 +982,7 @@ with tab8:
     def max_drawdown(cum):
         roll_max = cum.cummax()
         drawdown = cum / roll_max - 1.0
-        return drawdown.min()
+        return drawdown.min() * 100
 
     naive_r = port_returns
     strat_r = strategy_returns
@@ -1002,9 +1005,36 @@ with tab8:
             np.sqrt(np.mean(np.minimum(0, strat_r)**2)) * np.sqrt(252) * 100
         ],
         "Max Drawdown (%)": [
-            max_drawdown(cum_naive) * 100,
-            max_drawdown(cum_strategy) * 100
+            max_drawdown(cum_naive),
+            max_drawdown(cum_strategy)
         ]
     }, index=["60/40 Only", "With F&G + Bullish SL"])
 
-    st.dataframe(stats_all.round(2))
+    # Layout side-by-side
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=cum_naive.index,
+            y=cum_naive / cum_naive.iloc[0],
+            name="60/40 Portfolio",
+            line=dict(color="navy")
+        ))
+        fig.add_trace(go.Scatter(
+            x=cum_strategy.index,
+            y=cum_strategy / cum_strategy.iloc[0],
+            name="With F&G + Bullish SL",
+            line=dict(color="skyblue")
+        ))
+        fig.update_layout(
+            title="📈 Full Period Indexed Performance",
+            yaxis_title="Indexed Value",
+            xaxis_title="Date",
+            height=500,
+            legend=dict(x=0.01, y=0.99)
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    with col2:
+        st.markdown("### 📟 Risk Summary")
+        st.dataframe(stats_all.round(2), use_container_width=True)
