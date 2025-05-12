@@ -759,6 +759,41 @@ with tab7:
 
     st.dataframe(summary)
 
+    st.markdown("### 📋 Strategy Summary Table")
+
+    def max_drawdown(cum):
+        roll_max = cum.cummax()
+        return (cum / roll_max - 1).min()
+
+    strat_r = adjusted_returns
+    naive_r = port_returns
+
+    stats_summary = pd.DataFrame({
+        "Return (%)": [
+            (cumulative_no_sl.iloc[-1] / cumulative_no_sl.iloc[0] - 1) * 100,
+            (cumulative_return.iloc[-1] / cumulative_return.iloc[0] - 1) * 100
+        ],
+        "Volatility (%)": [
+            naive_r.std() * np.sqrt(252) * 100,
+            strat_r.std() * np.sqrt(252) * 100
+        ],
+        "CVaR (95%) (%)": [
+            naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
+            strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100
+        ],
+        "Downside Dev. (%)": [
+            np.sqrt(np.mean(np.minimum(0, naive_r) ** 2)) * np.sqrt(252) * 100,
+            np.sqrt(np.mean(np.minimum(0, strat_r) ** 2)) * np.sqrt(252) * 100
+        ],
+        "Max Drawdown (%)": [
+            max_drawdown(cumulative_no_sl) * 100,
+            max_drawdown(cumulative_return) * 100
+        ]
+    }, index=["60/40 Only", "With SL + Bullish Re-entry"])
+
+    st.dataframe(stats_summary.round(2), use_container_width=True)
+
+
 # ---------------------------- TAB 8 ----------------------------------
 
 with tab8:
