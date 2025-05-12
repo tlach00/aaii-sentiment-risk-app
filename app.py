@@ -83,13 +83,15 @@ def load_fng_data():
 fng_df, data = load_fng_data()
 
 # Tabs
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "📁 Raw Excel Viewer",
     "📈 AAII Sentiment survey",
     "😱 CNN F&G replication", 
     "👻 Stock F&G", 
     "📟 F&G in Risk Management",
-    "🧨 F&G Stop-Loss"
+    "⚖️ Dynamic Exposure Scaling & Stop-Loss Triggers",
+    "🧨 F&G Stop-Loss",
+    "🧨 F&G Stop-Loss 2"
 ])
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
@@ -634,8 +636,229 @@ with tab5:
         st.dataframe(breach_df.round(2), use_container_width=True)
 
 # ---------------------------- TAB 6 ----------------------------------
-
 with tab6:
+    st.markdown("## ⚖️ F&G-Adjusted Stop-Loss with Bullish Sentiment Re-entry (60/40 Portfolio)")
+
+    exposure_floor = 0.3
+    exposure_ceiling = 1.0
+
+    # Parameters
+    bullish_threshold = st.slider("Minimum Bullish Sentiment to Re-enter Market (%)", 0, 100, 30)
+
+    # Fetch returns and align with FNG
+    spy = data["SPY"].pct_change()
+    tlt = data["TLT"].pct_change()
+    fng_series = fng_df["FNG_Index"]
+
+    common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
+    spy = spy.loc[common_idx]
+    tlt = tlt.loc[common_idx]
+    fng_series = fng_series.loc[common_idx]
+    port_returns = (0.6 * spy + 0.4 * tlt).dropna()
+
+    # VaR computation
+    var_series = port_returns.rolling(window=100).apply(lambda x: np.percentile(x, 5)).dropna()
+    common_idx = port_returns.index.intersection(var_series.index)
+    port_returns = port_returns.loc[common_idx]
+    var_series = var_series.loc[common_idx]
+    fng_series = fng_series.loc[common_idx]
+
+    # F&G-based multiplier
+    def stop_loss_multiplier_from_fng(fng):
+        if fng < 25: return 1.5
+        elif fng < 50: return 1.2
+        elif fng < 75: return 1.0
+        else: return 0.8
+
+    sl_multiplier = fng_series.apply(stop_loss_multiplier_from_fng)
+    stop_loss_threshold = var_series * sl_multiplier
+    triggered = port_returns < stop_loss_threshold
+
+    # ✅ AAII Bullish data (weekly, forward filled to daily and aligned)
+    bullish_series = clean_df.set_index("Date")["Bullish"]
+    bullish_series = bullish_series.resample("D").ffill()
+    bullish_series = bullish_series.reindex(port_returns.index, method="ffill")
+
+    # Dynamic exposure (based on VaR)
+    var_scaled = (var_series - var_series.min()) / (var_series.max() - var_series.min())
+    dynamic_exposure = exposure_ceiling - var_scaled * (exposure_ceiling - exposure_floor)
+    dynamic_exposure = dynamic_exposure.clip(exposure_floor, exposure_ceiling)
+
+    # Exposure logic: stop-loss based on FNG, re-entry based on bullish sentiment
+    exposure_series = pd.Series(index=port_returns.index, dtype=float)
+
+    for i, date in enumerate(port_returns.index):
+        if i == 0:
+            exposure_series.iloc[i] = dynamic_exposure.iloc[i]
+        else:
+            if triggered.iloc[i]:
+                exposure_series.iloc[i] = exposure_floor
+            else:
+                if bullish_series.iloc[i] >= bullish_threshold:
+                    exposure_series.iloc[i] = dynamic_exposure.iloc[i]
+                else:
+                    exposure_series.iloc[i] = exposure_floor
+
+    # Apply lag to simulate real-world adjustment
+    adjusted_returns = port_returns * exposure_series.shift(1).fillna(exposure_ceiling)
+    cumulative_return = (1 + adjusted_returns).cumprod()
+    cumulative_no_sl = (1 + port_returns).cumprod()
+
+    # Plot results
+    st.markdown("### 📈 60/40 Portfolio: Raw vs Stop-Loss + Bullish Filter")
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=cumulative_no_sl.index, y=cumulative_no_sl / cumulative_no_sl.iloc[0], name="60/40 No Stop-Loss"))
+    fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return / cumulative_return.iloc[0], name="60/40 with SL + Bullish Re-entry"))
+    fig.update_layout(title="Indexed Portfolio Value", yaxis_title="Value", xaxis_title="Date")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Stop-loss trigger stats by sentiment regime
+    st.markdown("### 🧾 Stop-Loss Trigger Stats by Sentiment Regime")
+
+    def classify_regime(fng):
+        if fng < 25: return "Extreme Fear"
+        elif fng < 50: return "Fear"
+        elif fng < 75: return "Greed"
+        else: return "Extreme Greed"
+
+    regime_series = fng_series.apply(classify_regime)
+    trigger_df = pd.DataFrame({
+        "Year": triggered.index.year,
+        "Triggered": triggered,
+        "Regime": regime_series
+    })
+
+    summary = (
+        trigger_df[trigger_df["Triggered"]]
+        .groupby(["Year", "Regime"])
+        .size()
+        .unstack(fill_value=0)
+    )
+
+    st.dataframe(summary)
+
+# ---------------------------- TAB 7 ----------------------------------
+with tab7:
+    st.markdown("## 🧨 F&G Stop-Loss Performance During Market Crises (60/40 SPY/TLT)")
+
+    crisis_periods = {
+        "2008 Crash": ("2008-09-01", "2009-04-01"),
+        "COVID Crash": ("2020-02-01", "2020-07-01"),
+        "2022 Bear Market": ("2022-01-01", "2023-01-01")
+    }
+
+    spy = data["SPY"].pct_change()
+    tlt = data["TLT"].pct_change()
+    fng_series = fng_df["FNG_Index"]
+
+    common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
+    spy = spy.loc[common_idx]
+    tlt = tlt.loc[common_idx]
+    fng_series = fng_series.loc[common_idx]
+
+    port_returns = (0.6 * spy + 0.4 * tlt)
+    var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
+    var_series = var_series.reindex(port_returns.index, method="ffill")
+    fng_series = fng_series.reindex(port_returns.index, method="ffill")
+
+    def stop_loss_multiplier(fng):
+        if fng < 25: return 1.5
+        elif fng < 50: return 1.2
+        elif fng < 75: return 1.0
+        else: return 0.8
+
+    sl_multiplier = fng_series.apply(stop_loss_multiplier)
+    threshold = var_series * sl_multiplier
+    triggered = port_returns < threshold
+
+    exposure = pd.Series(index=port_returns.index, dtype=float)
+    exposure.iloc[0] = 1.0
+    for i in range(1, len(port_returns)):
+        if triggered.iloc[i]:
+            exposure.iloc[i] = 0.3
+        else:
+            exposure.iloc[i] = 1.0
+
+    strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
+    cum_strategy = (1 + strategy_returns).cumprod()
+    cum_naive = (1 + port_returns).cumprod()
+
+    for label, (start, end) in crisis_periods.items():
+        st.markdown(f"### 📉 {label}")
+        try:
+            sub_index = cum_strategy.loc[start:end].index
+            start_idx = sub_index[0]
+            end_idx = sub_index[-1]
+
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=sub_index, y=cum_naive.loc[sub_index] / cum_naive.loc[start_idx],
+                                     name="60/40 Portfolio"))
+            fig.add_trace(go.Scatter(x=sub_index, y=cum_strategy.loc[sub_index] / cum_strategy.loc[start_idx],
+                                     name="With F&G Stop-Loss"))
+            fig.update_layout(title=f"Performance Comparison During {label}", yaxis_title="Indexed Value", height=400)
+            st.plotly_chart(fig, use_container_width=True)
+
+            naive_r = port_returns.loc[start_idx:end_idx]
+            strat_r = strategy_returns.loc[start_idx:end_idx]
+
+            def max_drawdown(cum):
+                roll_max = cum.cummax()
+                drawdown = cum / roll_max - 1.0
+                return drawdown.min()
+
+            stats = pd.DataFrame({
+                "Return (%)": [
+                    (cum_naive.loc[end_idx] / cum_naive.loc[start_idx] - 1) * 100,
+                    (cum_strategy.loc[end_idx] / cum_strategy.loc[start_idx] - 1) * 100
+                ],
+                "Volatility (%)": [naive_r.std() * np.sqrt(252) * 100, strat_r.std() * np.sqrt(252) * 100],
+                "CVaR (95%) (%)": [naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
+                                   strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100],
+                "Downside Dev. (%)": [
+                    np.sqrt(np.mean(np.minimum(0, naive_r) ** 2)) * np.sqrt(252) * 100,
+                    np.sqrt(np.mean(np.minimum(0, strat_r) ** 2)) * np.sqrt(252) * 100
+                ],
+                "Max Drawdown (%)": [
+                    max_drawdown(cum_naive.loc[start_idx:end_idx]) * 100,
+                    max_drawdown(cum_strategy.loc[start_idx:end_idx]) * 100
+                ]
+            }, index=["60/40 Only", "With Stop-Loss"])
+
+            st.dataframe(stats.round(2))
+        except Exception as e:
+            st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
+
+    # === Risk Metric Comparison Bar Chart ===
+    import matplotlib.pyplot as plt
+
+    risk_data = {
+        "2008 - CVaR": [28.12, 26.75],
+        "2008 - Downside Dev": [4.55, 4.32],
+        "2008 - Volatility": [24.90, 21.67],
+        "2020 - CVaR": [19.28, 16.43],
+        "2020 - Downside Dev": [3.94, 3.41],
+        "2020 - Volatility": [17.61, 15.34],
+        "2022 - CVaR": [12.87, 12.80],
+        "2022 - Downside Dev": [2.16, 2.14],
+        "2022 - Volatility": [9.83, 9.79],
+    }
+
+    df_risk = pd.DataFrame(risk_data, index=["60/40 Only", "With Stop-Loss"]).T
+
+    fig, ax = plt.subplots(figsize=(12, 6))
+    df_risk.plot(kind="bar", ax=ax, color=["#4c72b0", "#dd8452"])
+    ax.set_title("Risk Metrics for SPY/TLT 60/40 Portfolio During Market Crises", fontsize=15)
+    ax.set_ylabel("Value (%)")
+    ax.legend(title="", loc="upper right")
+    plt.xticks(rotation=45, ha='right')
+    plt.tight_layout()
+
+    st.markdown("### 📊 Risk Metrics Comparison Summary")
+    st.pyplot(fig)
+
+# ---------------------------- TAB 8 ----------------------------------
+
+with tab8:
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
     crisis_periods = {
@@ -695,9 +918,7 @@ with tab6:
         last_six_months_start = port_returns.index[-126]
         sub_index = cum_strategy.loc[last_six_months_start:].index
 
-        vix = data['^VIX'].pct_change().dropna()
-vix_cum = (1 + vix).cumprod().reindex(sub_index).fillna(method='ffill')
-
+        vix = data['^VIX'].reindex(sub_index).fillna(method='ffill')
 fig_1yr = go.Figure()
         fig_1yr.add_trace(go.Scatter(
     x=sub_index,
@@ -706,7 +927,7 @@ fig_1yr = go.Figure()
 ))
 fig_1yr.add_trace(go.Scatter(
     x=sub_index,
-    y=vix_cum / vix_cum.iloc[0],
+    y=vix / vix.iloc[0],
     name="VIX (Indexed)",
     yaxis="y2",
     line=dict(dash="dot", color="gray")
@@ -721,8 +942,10 @@ fig_1yr.add_trace(go.Scatter(
     yaxis=dict(title="Portfolio Indexed Value"),
     yaxis2=dict(title="VIX Indexed Value", overlaying="y", side="right", showgrid=False),
     height=400,
-    shapes=[dict(type="line", x0=sub_index[0], x1=sub_index[0], yref="paper", y0=0, y1=1, line=dict(color="red", dash="dot"))]
-)
+    shapes=[
+    dict(type="line", x0=sub_index[0], x1=sub_index[0], yref="paper", y0=0, y1=1, line=dict(color="red", dash="dot")),
+    dict(type="line", x0=sub_index[-1], x1=sub_index[-1], yref="paper", y0=0, y1=1, line=dict(color="red", dash="dot"))
+]
         st.plotly_chart(fig_1yr, use_container_width=True)
 
         # ➕ Add 6-month stats comparison
@@ -859,5 +1082,3 @@ with tab8:
             st.dataframe(stats.round(2))
         except Exception as e:
             st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
-
-
