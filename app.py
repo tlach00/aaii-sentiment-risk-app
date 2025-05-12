@@ -691,53 +691,38 @@ with tab6:
     cum_naive = (1 + port_returns).cumprod()
 
     st.markdown("### 📅 Last 1-Year Strategy Performance")
-with tab6:
-    st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
-
-    # ... other setup code ...
-
     try:
         last_six_months_start = port_returns.index[-126]
         sub_index = cum_strategy.loc[last_six_months_start:].index
 
-        vix = data['^VIX'].reindex(sub_index).fillna(method='ffill')
+        vix = data['^VIX'].pct_change().dropna()
+vix_cum = (1 + vix).cumprod().reindex(sub_index).fillna(method='ffill')
 
-        fig_1yr = go.Figure()
+fig_1yr = go.Figure()
         fig_1yr.add_trace(go.Scatter(
-            x=sub_index,
-            y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
-            name="60/40 Portfolio"
-        ))
-        fig_1yr.add_trace(go.Scatter(
-            x=sub_index,
-            y=vix / vix.iloc[0],
-            name="VIX (Indexed)",
-            yaxis="y2",
-            line=dict(dash="dot", color="gray")
-        ))
+    x=sub_index,
+    y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
+    name="60/40 Portfolio"
+))
+fig_1yr.add_trace(go.Scatter(
+    x=sub_index,
+    y=vix_cum / vix_cum.iloc[0],
+    name="VIX (Indexed)",
+    yaxis="y2",
+    line=dict(dash="dot", color="gray")
+))
         fig_1yr.add_trace(go.Scatter(
             x=sub_index,
             y=cum_strategy.loc[sub_index] / cum_strategy.loc[sub_index[0]],
             name="With F&G + Bullish Stop-Loss"
         ))
         fig_1yr.update_layout(
-            title="6-Month Indexed Performance",
-            yaxis=dict(title="Portfolio Indexed Value"),
-            yaxis2=dict(title="VIX Indexed Value", overlaying="y", side="right", showgrid=False),
-            height=400,
-            shapes=[
-                dict(type="line", x0=sub_index[0], x1=sub_index[0], yref="paper", y0=0, y1=1, line=dict(color="red", dash="dot")),
-                dict(type="line", x0=sub
-
-
     title="6-Month Indexed Performance",
     yaxis=dict(title="Portfolio Indexed Value"),
     yaxis2=dict(title="VIX Indexed Value", overlaying="y", side="right", showgrid=False),
     height=400,
-    shapes=[
-    dict(type="line", x0=sub_index[0], x1=sub_index[0], yref="paper", y0=0, y1=1, line=dict(color="red", dash="dot")),
-    dict(type="line", x0=sub_index[-1], x1=sub_index[-1], yref="paper", y0=0, y1=1, line=dict(color="red", dash="dot"))
-]
+    shapes=[dict(type="line", x0=sub_index[0], x1=sub_index[0], yref="paper", y0=0, y1=1, line=dict(color="red", dash="dot"))]
+)
         st.plotly_chart(fig_1yr, use_container_width=True)
 
         # ➕ Add 6-month stats comparison
@@ -775,7 +760,7 @@ with tab6:
         st.dataframe(stats_1yr.round(2))
     except Exception as e:
         st.warning(f"⚠️ Could not generate 1-year comparison: {e}")
-with tab6:
+with tab8:
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
     crisis_periods = {
@@ -874,6 +859,5 @@ with tab6:
             st.dataframe(stats.round(2))
         except Exception as e:
             st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
-
 
 
