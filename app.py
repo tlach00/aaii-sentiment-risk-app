@@ -736,6 +736,8 @@ with tab6:
 with tab7:
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
+    show_vix = st.checkbox("📈 Include VIX in charts and performance table", value=True)
+
     crisis_periods = {
         "2008 Crash": ("2008-09-01", "2009-04-01"),
         "COVID Crash": ("2020-02-01", "2020-07-01"),
@@ -744,12 +746,14 @@ with tab7:
 
     spy = data["SPY"].pct_change()
     tlt = data["TLT"].pct_change()
+    vix = data["^VIX"].pct_change().fillna(0)
     fng_series = fng_df["FNG_Index"]
     bullish_series = load_clean_data().set_index("Date")["Bullish"].reindex(spy.index).fillna(method="ffill")
 
     common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
     spy = spy.loc[common_idx]
     tlt = tlt.loc[common_idx]
+    vix = vix.loc[common_idx]
     fng_series = fng_series.loc[common_idx]
     bullish_series = bullish_series.loc[common_idx]
 
@@ -769,7 +773,6 @@ with tab7:
     triggered = port_returns < threshold
 
     min_bullish_to_reenter = 40
-
     exposure = pd.Series(index=port_returns.index, dtype=float)
     exposure.iloc[0] = 1.0
     quiet_days = 0
@@ -787,115 +790,7 @@ with tab7:
     strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
     cum_strategy = (1 + strategy_returns).cumprod()
     cum_naive = (1 + port_returns).cumprod()
-
-    st.markdown("### 📅 Last 6-Months Strategy Performance")
-    try:
-        last_six_months_start = port_returns.index[-126]
-        sub_index = cum_strategy.loc[last_six_months_start:].index
-
-        fig_1yr = go.Figure()
-        fig_1yr.add_trace(go.Scatter(
-            x=sub_index,
-            y=cum_naive.loc[sub_index] / cum_naive.loc[sub_index[0]],
-            name="60/40 Portfolio"
-        ))
-        fig_1yr.add_trace(go.Scatter(
-            x=sub_index,
-            y=cum_strategy.loc[sub_index] / cum_strategy.loc[sub_index[0]],
-            name="With F&G + Bullish Stop-Loss"
-        ))
-        fig_1yr.update_layout(title="6-Month Indexed Performance", yaxis_title="Indexed Value", height=400)
-        st.plotly_chart(fig_1yr, use_container_width=True)
-
-        # ➕ Add 6-month stats comparison
-        naive_r_1yr = port_returns.loc[sub_index]
-        strat_r_1yr = strategy_returns.loc[sub_index]
-
-        def max_drawdown(cum):
-            roll_max = cum.cummax()
-            drawdown = cum / roll_max - 1.0
-            return drawdown.min()
-
-        stats_1yr = pd.DataFrame({
-            "Return (%)": [
-                (cum_naive.loc[sub_index[-1]] / cum_naive.loc[sub_index[0]] - 1) * 100,
-                (cum_strategy.loc[sub_index[-1]] / cum_strategy.loc[sub_index[0]] - 1) * 100
-            ],
-            "Volatility (%)": [
-                naive_r_1yr.std() * np.sqrt(252) * 100,
-                strat_r_1yr.std() * np.sqrt(252) * 100
-            ],
-            "CVaR (95%) (%)": [
-                naive_r_1yr[naive_r_1yr < np.percentile(naive_r_1yr, 5)].mean() * 100,
-                strat_r_1yr[strat_r_1yr < np.percentile(strat_r_1yr, 5)].mean() * 100
-            ],
-            "Downside Dev. (%)": [
-                np.sqrt(np.mean(np.minimum(0, naive_r_1yr) ** 2)) * np.sqrt(252) * 100,
-                np.sqrt(np.mean(np.minimum(0, strat_r_1yr) ** 2)) * np.sqrt(252) * 100
-            ],
-            "Max Drawdown (%)": [
-                max_drawdown(cum_naive.loc[sub_index]),
-                max_drawdown(cum_strategy.loc[sub_index])
-            ]
-        }, index=["60/40 Only", "With Stop-Loss"])
-
-        st.dataframe(stats_1yr.round(2))
-    except Exception as e:
-        st.warning(f"⚠️ Could not generate 1-year comparison: {e}")
-with tab7:
-    st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
-
-    crisis_periods = {
-        "2008 Crash": ("2008-09-01", "2009-04-01"),
-        "COVID Crash": ("2020-02-01", "2020-07-01"),
-        "2022 Bear Market": ("2022-01-01", "2023-01-01")
-    }
-
-    spy = data["SPY"].pct_change()
-    tlt = data["TLT"].pct_change()
-    fng_series = fng_df["FNG_Index"]
-    bullish_series = load_clean_data().set_index("Date")["Bullish"].reindex(spy.index).fillna(method="ffill")
-
-    common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
-    spy = spy.loc[common_idx]
-    tlt = tlt.loc[common_idx]
-    fng_series = fng_series.loc[common_idx]
-    bullish_series = bullish_series.loc[common_idx]
-
-    port_returns = (0.6 * spy + 0.4 * tlt)
-    var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
-    var_series = var_series.reindex(port_returns.index, method="ffill")
-    fng_series = fng_series.reindex(port_returns.index, method="ffill")
-
-    def stop_loss_multiplier(fng):
-        if fng < 25: return 1.5
-        elif fng < 50: return 1.2
-        elif fng < 75: return 1.0
-        else: return 0.8
-
-    sl_multiplier = fng_series.apply(stop_loss_multiplier)
-    threshold = var_series * sl_multiplier
-    triggered = port_returns < threshold
-
-    min_bullish_to_reenter = 40
-
-    exposure = pd.Series(index=port_returns.index, dtype=float)
-    exposure.iloc[0] = 1.0
-    quiet_days = 0
-    for i in range(1, len(port_returns)):
-        if triggered.iloc[i]:
-            exposure.iloc[i] = 0.3
-            quiet_days = 0
-        else:
-            quiet_days += 1
-            if quiet_days >= 3 and bullish_series.iloc[i] >= min_bullish_to_reenter:
-                exposure.iloc[i] = 1.0
-            else:
-                exposure.iloc[i] = 0.3
-
-    strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
-    cum_strategy = (1 + strategy_returns).cumprod()
-    cum_naive = (1 + port_returns).cumprod()
+    cum_vix = (1 + vix).cumprod()
 
     for label, (start, end) in crisis_periods.items():
         st.markdown(f"### 📉 {label}")
@@ -909,11 +804,21 @@ with tab7:
                                      name="60/40 Portfolio"))
             fig.add_trace(go.Scatter(x=sub_index, y=cum_strategy.loc[sub_index] / cum_strategy.loc[start_idx],
                                      name="With F&G + Bullish Stop-Loss"))
+
+            if show_vix:
+                fig.add_trace(go.Scatter(
+                    x=sub_index,
+                    y=cum_vix.loc[sub_index] / cum_vix.loc[start_idx],
+                    name="VIX Indexed",
+                    line=dict(dash="dot", color="purple")
+                ))
+
             fig.update_layout(title=f"Performance Comparison During {label}", yaxis_title="Indexed Value", height=400)
             st.plotly_chart(fig, use_container_width=True)
 
             naive_r = port_returns.loc[start_idx:end_idx]
             strat_r = strategy_returns.loc[start_idx:end_idx]
+            vix_r = vix.loc[start_idx:end_idx]
 
             def max_drawdown(cum):
                 roll_max = cum.cummax()
@@ -923,21 +828,24 @@ with tab7:
             stats = pd.DataFrame({
                 "Return (%)": [
                     (cum_naive.loc[end_idx] / cum_naive.loc[start_idx] - 1) * 100,
-                    (cum_strategy.loc[end_idx] / cum_strategy.loc[start_idx] - 1) * 100
+                    (cum_strategy.loc[end_idx] / cum_strategy.loc[start_idx] - 1) * 100,
+                    (cum_vix.loc[end_idx] / cum_vix.loc[start_idx] - 1) * 100 if show_vix else np.nan
                 ],
-                "Volatility (%)": [naive_r.std() * np.sqrt(252) * 100, strat_r.std() * np.sqrt(252) * 100],
-                "CVaR (95%) (%)": [naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
-                                   strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100],
+                "Volatility (%)": [
+                    naive_r.std() * np.sqrt(252) * 100,
+                    strat_r.std() * np.sqrt(252) * 100,
+                    vix_r.std() * np.sqrt(252) * 100 if show_vix else np.nan
+                ],
+                "CVaR (95%) (%)": [
+                    naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
+                    strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100,
+                    vix_r[vix_r < np.percentile(vix_r, 5)].mean() * 100 if show_vix else np.nan
+                ],
                 "Downside Dev. (%)": [
-                    np.sqrt(np.mean(np.minimum(0, naive_r) ** 2)) * np.sqrt(252) * 100,
-                    np.sqrt(np.mean(np.minimum(0, strat_r) ** 2)) * np.sqrt(252) * 100
+                    np.sqrt(np.mean(np.minimum(0, naive_r)**2)) * np.sqrt(252) * 100,
+                    np.sqrt(np.mean(np.minimum(0, strat_r)**2)) * np.sqrt(252) * 100,
+                    np.sqrt(np.mean(np.minimum(0, vix_r)**2)) * np.sqrt(252) * 100 if show_vix else np.nan
                 ],
                 "Max Drawdown (%)": [
-                    max_drawdown(cum_naive.loc[start_idx:end_idx]) * 100,
-                    max_drawdown(cum_strategy.loc[start_idx:end_idx]) * 100
-                ]
-            }, index=["60/40 Only", "With Stop-Loss"])
+                    max_drawdown(cum_naive.loc[start_idx:end_idx])
 
-            st.dataframe(stats.round(2))
-        except Exception as e:
-            st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
