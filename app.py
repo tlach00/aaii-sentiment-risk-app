@@ -949,6 +949,12 @@ with tab8:
     This aims to preserve capital in volatile periods and boost return participation during greed regimes.
     """)
 
+    # === Portfolio start date selector
+    min_date = pd.to_datetime("2007-01-01")
+    max_date = pd.to_datetime("today")
+    start_date = st.date_input("📅 Portfolio start date:", value=min_date, min_value=min_date, max_value=max_date)
+    start_date = pd.to_datetime(start_date)
+
     # === Data
     spy = data["SPY"].pct_change()
     tlt = data["TLT"].pct_change()
@@ -956,6 +962,8 @@ with tab8:
     bullish_series = load_clean_data().set_index("Date")["Bullish"].reindex(spy.index).fillna(method="ffill")
 
     common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
+    common_idx = common_idx[common_idx >= start_date]
+
     spy = spy.loc[common_idx]
     tlt = tlt.loc[common_idx]
     fng_series = fng_series.loc[common_idx]
@@ -1054,7 +1062,7 @@ with tab8:
 
     col1, col2 = st.columns([4, 1])
     with col1:
-        st.markdown("### 📈 Full Period Indexed Performance")
+        st.markdown(f"### 📈 Indexed Performance (Since {start_date.date()})")
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=cum_static.index, y=cum_static / cum_static.iloc[0], name="60/40 Portfolio", line=dict(color="navy")))
         fig.add_trace(go.Scatter(x=cum_strategy.index, y=cum_strategy / cum_strategy.iloc[0], name="F&G Dyn. Strategy", line=dict(color="skyblue")))
@@ -1064,3 +1072,4 @@ with tab8:
     with col2:
         st.markdown("### 📋 Summary Table")
         st.dataframe(stats_all.round(2), use_container_width=True)
+
