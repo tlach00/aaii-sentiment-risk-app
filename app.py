@@ -15,8 +15,8 @@ from sklearn.neural_network import MLPRegressor
 from sklearn.model_selection import train_test_split
 
 warnings.filterwarnings("ignore")
-st.set_page_config(page_title="AAII Sentiment & S&P 500 Risk Management Dashboard", layout="wide")
-st.title(":bar_chart: AAII Sentiment & S&P 500 Risk Management Dashboard")
+st.set_page_config(page_title="QUALI-QUANT MARKET SENTIMENT DASHBOARD", layout="wide")
+st.title(":bar_chart: QUALI-QUANT MARKET SENTIMENT DASHBOARD")
 
 ## AAII survey data
 @st.cache_data
