@@ -83,12 +83,12 @@ def load_fng_data():
 fng_df, data = load_fng_data()
 
 # Tabs
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+tab1, tab2, tab3, tab4, tab6, tab7, tab8, tab9 = st.tabs([
     "📓Read me",
     "📁 Raw Excel Viewer",
     "📈 AAII Sentiment survey",
     "😱 CNN F&G replication", 
-    "👻 Stock F&G", 
+    # "👻 Stock F&G", 
     "📟 F&G in Risk Management",
     "⚖️ Dynamic Exposure Scaling & Stop-Loss Triggers",
     "🧨 F&G Stop-Loss",
@@ -415,6 +415,8 @@ with tab4:
         st.dataframe(pd.DataFrame(stats, index=["Value"]).T, use_container_width=True)
 
 
+"""
+---- unused feature ---
 # ---------------- tab 5 ----------------
 with tab5:
     import yfinance as yf
@@ -428,7 +430,7 @@ with tab5:
     st.markdown("## 🧬 Stock-Specific Fear & Greed Index Dashboard")
 
     with st.expander("❓ How is this index calculated?"):
-        st.markdown("""
+        st.markdown('''
         The **Stock-Specific Fear & Greed Index** combines 6 key components:
 
         - **Volatility**: Stock’s 20-day and 50-day historical volatility.
@@ -439,7 +441,7 @@ with tab5:
         - **Breadth**: 20-day return or RSI.
 
         Each feature is standardized (z-score), averaged, and scaled from 0 to 100.
-        """)
+        ''')
 
     def compute_fg_score(ticker):
         try:
@@ -534,7 +536,7 @@ with tab5:
             st.plotly_chart(fig_price, use_container_width=True, key="line_price")
         else:
             st.warning("Could not retrieve or compute data for this ticker.")
-
+"""
 
 # ---------------------------- TAB 6 ----------------------------------
 with tab6:
