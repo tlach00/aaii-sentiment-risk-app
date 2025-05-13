@@ -977,7 +977,7 @@ with tab7:
 
 
 # ---------------------------- TAB 8 ----------------------------------
-with tab10:
+with tab8:
     st.markdown("## 📊 Comparison: Dynamic Strategy vs. SPY Long-Only")
 
     # === Portfolio start date selector
