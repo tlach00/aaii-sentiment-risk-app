@@ -975,32 +975,31 @@ with tab7:
     st.markdown("### 📋 Summary Table")
     st.dataframe(stats_all.round(2), use_container_width=True)
 
-
 # ---------------------------- TAB 8 ----------------------------------
 with tab8:
-    st.markdown("## 🔁 Strategy Backtest with Real-Time Scaling (No Lookahead Bias)")
+    st.markdown("## 🧪 Strategy Backtest with Real-Time Scaling (No Lookahead Bias)")
 
-    # === Portfolio start date selector
+    # === Portfolio start date selector (unique key!)
     min_date = pd.to_datetime("2007-01-01")
     max_date = pd.to_datetime("today")
-    start_date = st.date_input("📅 Portfolio start date:", value=min_date, min_value=min_date, max_value=max_date)
+    start_date = st.date_input("📅 Portfolio start date:", value=min_date, min_value=min_date, max_value=max_date, key="start_date_tab8")
     start_date = pd.to_datetime(start_date)
 
-    # === Data
+    # === Load data
     spy = data["SPY"].pct_change()
     tlt = data["TLT"].pct_change()
     fng_series = fng_df["FNG_Index"]
     bullish_series = load_clean_data().set_index("Date")["Bullish"].reindex(spy.index).fillna(method="ffill")
 
+    # === Align indexes
     common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
     common_idx = common_idx[common_idx >= start_date]
-
     spy = spy.loc[common_idx]
     tlt = tlt.loc[common_idx]
     fng_series = fng_series.loc[common_idx]
     bullish_series = bullish_series.loc[common_idx]
 
-    # === Dynamic Weights
+    # === Dynamic Weights (based on F&G)
     def get_weights(fng):
         if fng < 25: return 0.3, 0.7
         elif fng < 50: return 0.5, 0.5
@@ -1010,12 +1009,11 @@ with tab8:
     weights_df = fng_series.apply(lambda x: pd.Series(get_weights(x), index=["w_spy", "w_tlt"]))
     w_spy = weights_df["w_spy"]
     w_tlt = weights_df["w_tlt"]
-
     port_returns = (spy * w_spy + tlt * w_tlt).dropna()
 
-    # === Stop-loss threshold
-    var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
-    var_series = var_series.reindex(port_returns.index, method="ffill")
+    # === VaR & stop-loss threshold (rolling past only)
+    window = 100
+    var_series = port_returns.rolling(window).apply(lambda x: np.percentile(x, 5)).dropna()
     fng_series = fng_series.reindex(port_returns.index, method="ffill")
 
     def stop_loss_multiplier(fng):
@@ -1026,27 +1024,80 @@ with tab8:
 
     sl_multiplier = fng_series.apply(stop_loss_multiplier)
     threshold = var_series * sl_multiplier
+    threshold = threshold.reindex(port_returns.index).ffill()
     triggered = port_returns < threshold
 
-    # === Real-time exposure control with rolling scaling
-    rolling_min = threshold.rolling(window=100, min_periods=30).min()
-    rolling_max = threshold.rolling(window=100, min_periods=30).max()
-    scaled_exposure = (threshold - rolling_min) / (rolling_max - rolling_min)
-    scaled_exposure = 1 - scaled_exposure
-    scaled_exposure = scaled_exposure.clip(0, 1)
-
+    # === Exposure scaling (real-time)
     exposure = pd.Series(index=port_returns.index, dtype=float)
     exposure.iloc[0] = 1.0
     quiet_days = 0
     min_bullish = 40
 
     for i in range(1, len(port_returns)):
+        window_data = threshold.iloc[:i]
+        min_th = window_data.min()
+        max_th = window_data.max()
+        scaled_expo = 1 - (threshold.iloc[i] - min_th) / (max_th - min_th + 1e-8)
+        scaled_expo = scaled_expo * 0.7 + 0.3  # scale to 0.3–1.0
+
         if triggered.iloc[i]:
-            exposure.iloc[i] = scaled_exposure.iloc[i] * 0.7 + 0.3
+            exposure.iloc[i] = scaled_expo
             quiet_days = 0
         else:
             quiet_days += 1
             if quiet_days >= 3 and bullish_series.iloc[i] >= min_bullish:
                 exposure.iloc[i] = 1.0
             else:
-                exposu
+                exposure.iloc[i] = exposure.iloc[i - 1]
+
+    # === Strategy returns (apply exposure)
+    strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
+
+    # === Add SPY-only and 60/40
+    spy_only = spy.reindex(strategy_returns.index)
+    static_returns = (0.6 * spy + 0.4 * tlt).reindex(strategy_returns.index)
+    cum_strategy = (1 + strategy_returns).cumprod()
+    cum_static = (1 + static_returns).cumprod()
+    cum_spy = (1 + spy_only).cumprod()
+
+    # === Final stats
+    def max_drawdown(cum):
+        return (cum / cum.cummax() - 1).min()
+
+    sharpe_ratio = lambda r: (r.mean() / r.std()) * np.sqrt(252)
+
+    df_stats = pd.DataFrame({
+        "Return (%)": [
+            (cum_static.iloc[-1] / cum_static.iloc[0] - 1) * 100,
+            (cum_strategy.iloc[-1] / cum_strategy.iloc[0] - 1) * 100,
+            (cum_spy.iloc[-1] / cum_spy.iloc[0] - 1) * 100
+        ],
+        "Volatility (%)": [
+            static_returns.std() * np.sqrt(252) * 100,
+            strategy_returns.std() * np.sqrt(252) * 100,
+            spy_only.std() * np.sqrt(252) * 100
+        ],
+        "Sharpe Ratio": [
+            sharpe_ratio(static_returns),
+            sharpe_ratio(strategy_returns),
+            sharpe_ratio(spy_only)
+        ],
+        "Max Drawdown (%)": [
+            max_drawdown(cum_static) * 100,
+            max_drawdown(cum_strategy) * 100,
+            max_drawdown(cum_spy) * 100
+        ]
+    }, index=["60/40", "F&G Strategy", "SPY Only"])
+
+    # === Plot
+    st.markdown("### 📈 Indexed Performance Comparison")
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=cum_static.index, y=cum_static / cum_static.iloc[0], name="60/40", line=dict(color="gray")))
+    fig.add_trace(go.Scatter(x=cum_strategy.index, y=cum_strategy / cum_strategy.iloc[0], name="F&G Strategy", line=dict(color="blue")))
+    fig.add_trace(go.Scatter(x=cum_spy.index, y=cum_spy / cum_spy.iloc[0], name="SPY Only", line=dict(color="red")))
+    fig.update_layout(title="Performance with Real-Time Exposure Scaling", yaxis_title="Indexed Value", height=450)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # === Table
+    st.markdown("### 📊 Summary Table")
+    st.dataframe(df_stats.round(2), use_container_width=True)
