@@ -1,4 +1,4 @@
-
+https://aaii-sentiment-risk-app-axzey9q8thxupplastjgbq.streamlit.app/#current-sentiment-regime-neutral
 🧭 App Introduction
 Over the past decade, markets have become increasingly sentiment-driven — shaped not only by fundamentals but by investor psychology, fear, greed, and narrative shifts.
 Volatility spikes, meme stock frenzies, and algorithmic reactivity have highlighted how emotions can overpower logic in the short term.
