@@ -588,7 +588,38 @@ These sentiment-based models allow risk thresholds to adapt to investor emotions
 
 with tab6:
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
+st.markdown("""
+### 🧠 Strategy Overview
 
+This strategy dynamically reduces portfolio exposure during high-risk periods using:
+- **Value at Risk (VaR)**: 5% rolling quantile of recent 100-day returns
+- **Fear & Greed (F&G) Index**: Determines how aggressively to scale back exposure:
+  - Lower sentiment → higher stop-loss multiplier
+  - Higher sentiment → tighter thresholds
+
+When a return breach occurs (i.e., below the F&G-adjusted VaR), exposure drops to **30%**.
+It only returns to normal levels when:
+- Bullish sentiment rises above a user-defined threshold (default: 30%)
+- At least 3 quiet days have passed
+
+### 🔍 Interpretation of the Chart
+- The plot compares **indexed performance** of the raw 60/40 portfolio and the **strategy with stop-loss and bullish sentiment re-entry**
+- The strategy aims to **limit drawdowns** during downturns and re-enter at favorable sentiment conditions
+
+### 📟 Trigger Table
+- The second table breaks down how many stop-loss events were triggered per year and regime
+  (Extreme Fear, Fear, Greed, Extreme Greed)
+
+### 📋 Summary Table
+- This compares performance metrics:
+  - Return
+  - Volatility
+  - Conditional VaR (CVaR)
+  - Downside Deviation
+  - Max Drawdown
+
+The goal: **enhance downside protection** while participating in upside trends using a **sentiment-aware risk overlay**.
+""")
     crisis_periods = {
         "2008 Crash": ("2008-09-01", "2009-04-01"),
         "COVID Crash": ("2020-02-01", "2020-07-01"),
@@ -663,7 +694,7 @@ with tab6:
     fig_last6mo.add_trace(go.Scatter(
         x=sub_index,
         y=cum_strategy.loc[sub_index] / cum_strategy.loc[start_idx],
-        name="With F&G + Bullish Stop-Loss",
+        name="With F&G Stop-Loss + Bullish Re-entry",
         line=dict(color="skyblue")
     ))
     fig_last6mo.add_trace(go.Scatter(
@@ -773,7 +804,7 @@ with tab6:
                     max_drawdown(cum_strategy.loc[start_idx:end_idx]) * 100,
                     max_drawdown(cum_vix_strategy.loc[start_idx:end_idx]) * 100
                 ]
-            }, index=["60/40 Only", "With F&G Stop-Loss", "With VIX Strategy"])
+            }, index=["60/40 Only", "With F&G Stop-Loss + Bullish Re-entry", "With VIX Strategy"])
 
             st.dataframe(stats.round(2))
         except Exception as e:
