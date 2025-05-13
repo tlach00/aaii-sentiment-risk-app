@@ -588,9 +588,9 @@ These sentiment-based models allow risk thresholds to adapt to investor emotions
 # ---------------------------- TAB 6 ----------------------------------
 
 with tab6:
-    st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
+    st.markdown("## \U0001F4A8 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
     st.markdown("""
-### 🧠 Strategy Overview
+### \U0001F9E0 Strategy Overview
 
 This strategy dynamically reduces portfolio exposure during high-risk periods using:
 - **Value at Risk (VaR)**: 5% rolling quantile of recent 100-day returns
@@ -603,7 +603,7 @@ It only returns to normal levels when:
 - Bullish sentiment rises above a user-defined threshold (default: 40%)
 - At least 3 quiet days have passed
 
-### 🔍 Interpretation of the Chart
+### \U0001F50D Interpretation of the Chart
 - The plot compares **indexed performance** of the raw 60/40 portfolio and the **strategy with stop-loss and bullish sentiment re-entry**
 - The strategy aims to **limit drawdowns** during downturns and re-enter at favorable sentiment conditions
 - The Vix serves as a comparator also for investor sentiment to see if what we built was necessary.
@@ -626,8 +626,8 @@ The goal: **enhance downside protection** while participating in upside trends u
     spy = spy.loc[common_idx]
     tlt = tlt.loc[common_idx]
     vix = vix.loc[common_idx]
-    fng_series = fng_series.loc[common_idx]
-    bullish_series = bullish_series.loc[common_idx]
+    fng_series = fng_series.loc[common_idx].shift(1)  # Apply shift to avoid lookahead
+    bullish_series = bullish_series.loc[common_idx].shift(1)  # Apply shift to avoid lookahead
 
     port_returns = (0.6 * spy + 0.4 * tlt)
     var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
@@ -667,7 +667,7 @@ The goal: **enhance downside protection** while participating in upside trends u
     vix_strategy_returns = port_returns * vix_exposure.shift(1).fillna(1.0)
     cum_vix_strategy = (1 + vix_strategy_returns).cumprod()
 
-    st.markdown("### 📈 Last 6 Months: Indexed Portfolio Comparison")
+    st.markdown("### \U0001F4C8 Last 6 Months: Indexed Portfolio Comparison")
 
     aligned_index = cum_strategy.index.intersection(cum_naive.index).intersection(cum_vix_strategy.index)
     last_6mo_start = aligned_index[-126]
@@ -741,7 +741,7 @@ The goal: **enhance downside protection** while participating in upside trends u
     st.dataframe(stats_6mo.round(2))
 
     for label, (start, end) in crisis_periods.items():
-        st.markdown(f"### 📉 {label}")
+        st.markdown(f"### \U0001F4C9 {label}")
         try:
             sub_index = cum_strategy.loc[start:end].index
             start_idx = sub_index[0]
