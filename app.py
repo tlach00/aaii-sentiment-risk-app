@@ -119,7 +119,7 @@ with tab1:
     """)
 
 # ---------------------------- TAB  2 ----------------------------------
-with 2:
+with tab2:
     st.header("📋 Filtered Data le")
     min_date = clean_df["Date"].min().date()
     max_date = clean_df["Date"].max().date()
