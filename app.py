@@ -83,7 +83,7 @@ def load_fng_data():
 fng_df, data = load_fng_data()
 
 # Tabs
-tab1, tab2, tab3, tab4, tab6, tab8, tab9 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📓Read me",
     "📁 Raw Excel Viewer",
     "📈 AAII Sentiment survey",
@@ -118,9 +118,9 @@ with tab1:
     Whether you're a portfolio manager, a quant, or simply a data-driven investor, this dashboard offers an interactive sandbox to explore how sentiment shapes performance.
     """)
 
-# ---------------------------- TAB 2 ----------------------------------
-with tab2:
-    st.header("📋 Filtered Data Table")
+# ---------------------------- TAB  2 ----------------------------------
+with 2:
+    st.header("📋 Filtered Data le")
     min_date = clean_df["Date"].min().date()
     max_date = clean_df["Date"].max().date()
     start_date = pd.to_datetime(min_date)
@@ -413,131 +413,9 @@ with tab4:
         st.dataframe(pd.DataFrame(stats, index=["Value"]).T, use_container_width=True)
 
 
-"""
----- unused feature ---
-# ---------------- tab 5 ----------------
+
+# ---------------------------- TAB 5 ----------------------------------
 with tab5:
-    import yfinance as yf
-    import pandas as pd
-    import numpy as np
-    import plotly.graph_objects as go
-    import plotly.express as px
-    import datetime
-    import streamlit as st
-
-    st.markdown("## 🧬 Stock-Specific Fear & Greed Index Dashboard")
-
-    with st.expander("❓ How is this index calculated?"):
-        st.markdown('''
-        The **Stock-Specific Fear & Greed Index** combines 6 key components:
-
-        - **Volatility**: Stock’s 20-day and 50-day historical volatility.
-        - **Safe Haven Demand**: SPY/TLT ratio.
-        - **Junk Bond Demand**: HYG vs LQD yield spread.
-        - **Sentiment**: Options skew (put vs call interest).
-        - **Momentum**: Stock vs 125-day MA.
-        - **Breadth**: 20-day return or RSI.
-
-        Each feature is standardized (z-score), averaged, and scaled from 0 to 100.
-        ''')
-
-    def compute_fg_score(ticker):
-        try:
-            end = datetime.datetime.today()
-            start = end - datetime.timedelta(days=365)
-            stock = yf.download(ticker, start=start, end=end)["Close"]
-            market = yf.download(["SPY", "TLT", "HYG", "LQD"], start=start, end=end)["Close"]
-            
-            df = pd.DataFrame(index=stock.index)
-            df["price"] = stock
-            df["ret"] = stock.pct_change()
-            df["vol_20"] = stock.pct_change().rolling(20).std()
-            df["vol_50"] = stock.pct_change().rolling(50).std()
-            df["vol"] = df[["vol_20", "vol_50"]].mean(axis=1)
-            df["momentum"] = 100 * (stock - stock.rolling(125).mean()) / stock.rolling(125).mean()
-            df["breadth"] = stock.pct_change(20)
-            df["safehaven"] = (market["SPY"] / market["TLT"]).pct_change().rolling(20).mean()
-            df["junk"] = (market["HYG"] / market["LQD"]).pct_change().rolling(20).mean()
-            df.dropna(inplace=True)
-
-            z = (df[["vol", "momentum", "breadth", "safehaven", "junk"]] - df[["vol", "momentum", "breadth", "safehaven", "junk"]].mean()) / df[["vol", "momentum", "breadth", "safehaven", "junk"]].std()
-            fng_scaled = 50 + z.mean(axis=1) * 10
-            return fng_scaled.clip(0, 100)
-        except Exception as e:
-            return None
-
-    def plot_fng_gauge(ticker, score, key):
-        color = "#d9f2d9" if score > 75 else "#e6f2cc" if score > 50 else "#fff2cc" if score > 25 else "#ffcccc"
-        fig = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=score,
-            gauge={
-                'axis': {'range': [0, 100]},
-                'bar': {'color': "black"},
-                'steps': [
-                    {'range': [0, 25], 'color': '#ffcccc'},
-                    {'range': [25, 50], 'color': '#fff2cc'},
-                    {'range': [50, 75], 'color': '#d9f2d9'},
-                    {'range': [75, 100], 'color': '#b6d7a8'},
-                ]
-            }
-        ))
-        fig.update_layout(width=260, height=200, margin=dict(t=30, b=0, l=0, r=0))
-        st.plotly_chart(fig, use_container_width=False, key=key)
-        st.markdown(f"<div style='text-align:center; color:{color}; font-weight:bold;'>{ticker}</div>", unsafe_allow_html=True)
-
-    @st.cache_data
-    def load_top_gauges():
-        results = {}
-        for ticker in ["AAPL", "MSFT", "AMZN", "GOOGL", "NVDA", "META", "TSLA", "UNH"]:
-            fng_today = compute_fg_score(ticker)
-            if fng_today is not None and not fng_today.empty:
-                score = round(fng_today[-1], 1)
-                results[ticker] = score
-        return results
-
-    st.markdown("### 🏆 Fear & Greed Today — Top S&P 500 Companies")
-    cols = st.columns(4)
-    top_scores = load_top_gauges()
-    for i, (ticker, score) in enumerate(top_scores.items()):
-        with cols[i % 4]:
-            plot_fng_gauge(ticker, score, key=f"gauge_{ticker}")
-
-    # Optional: manual refresh
-    # if st.button("🔄 Refresh Top 10 Gauges"):
-    #     st.cache_data.clear()
-
-    st.markdown("---")
-    st.markdown("### 🔍 Explore Any S&P 500 Stock")
-
-    with open("tickers_sp500.txt") as f:
-        all_tickers = f.read().splitlines()
-
-    selected = st.selectbox("Select a stock:", options=all_tickers)
-    date_range = st.date_input("Select date range:", value=(datetime.date(2023, 1, 1), datetime.date.today()))
-
-    if selected:
-        fng_full = compute_fg_score(selected)
-        if fng_full is not None and not fng_full.empty:
-            fng_range = fng_full.loc[str(date_range[0]):str(date_range[1])]
-            st.metric(f"Today's {selected} Fear & Greed Score", f"{round(fng_range[-1],1)}")
-
-            st.markdown("#### Historical Fear & Greed Index")
-            fig_fg = px.line(fng_range, title="F&G Index", labels={"value": "F&G Score", "index": "Date"})
-            fig_fg.update_layout(height=300)
-            st.plotly_chart(fig_fg, use_container_width=True, key="line_fg")
-
-            st.markdown("#### Stock Price History")
-            price_data = yf.download(selected, start=date_range[0], end=date_range[1])["Close"]
-            fig_price = px.line(price_data, title="Price", labels={"value": "Price", "index": "Date"})
-            fig_price.update_layout(height=300)
-            st.plotly_chart(fig_price, use_container_width=True, key="line_price")
-        else:
-            st.warning("Could not retrieve or compute data for this ticker.")
-"""
-
-# ---------------------------- TAB 6 ----------------------------------
-with tab6:
     st.markdown("""
 ### 🧠 Distribution of SPY Returns with Historical, F&G, and Bullish Sentiment–Adjusted VaR:  
 This section visualizes the **distribution of daily SPY returns** and overlays multiple **Value-at-Risk (VaR)** and **Conditional VaR (CVaR)** calculations:
@@ -705,173 +583,10 @@ These sentiment-based models allow risk thresholds to adapt to investor emotions
     }, index=["% of Days"]).T
     st.dataframe(breach_df.round(2), use_container_width=True)
 
-"""
-# ---------------------------- TAB 7 ----------------------------------
-with tab7:
-    st.markdown("## ⚖️ F&G-Adjusted Stop-Loss with Bullish Sentiment Re-entry (60/40 Portfolio)")
-    st.markdown(\"\"\"
-### 🧠 Strategy Overview
 
-This strategy dynamically reduces portfolio exposure during high-risk periods using:
-- **Value at Risk (VaR)**: 5% rolling quantile of recent 100-day returns  
-- **Fear & Greed (F&G) Index**: Determines how aggressively to scale back exposure:
-  - Lower sentiment → higher stop-loss multiplier  
-  - Higher sentiment → tighter thresholds
+# ---------------------------- TAB 6 ----------------------------------
 
-When a return breach occurs (i.e., below the F&G-adjusted VaR), exposure drops to **30%**.  
-It only returns to normal levels when:
-- Bullish sentiment rises above a user-defined threshold (default: 30%)
-- At least 3 quiet days have passed
-
-### 🔍 Interpretation of the Chart
-- The plot compares **indexed performance** of the raw 60/40 portfolio and the **strategy with stop-loss and bullish sentiment re-entry**  
-- The strategy aims to **limit drawdowns** during downturns and re-enter at favorable sentiment conditions
-
-### 📟 Trigger Table
-- The second table breaks down how many stop-loss events were triggered per year and regime  
-  (Extreme Fear, Fear, Greed, Extreme Greed)
-
-### 📋 Summary Table
-- This compares performance metrics:
-  - Return  
-  - Volatility  
-  - Conditional VaR (CVaR)  
-  - Downside Deviation  
-  - Max Drawdown
-
-The goal: **enhance downside protection** while participating in upside trends using a **sentiment-aware risk overlay**.
-\"\"\")
-
-    available_dates = data.index.intersection(fng_df.index)
-    default_start = available_dates[0].date()
-    selected_start = st.date_input("Select portfolio start date:", value=default_start, min_value=default_start, max_value=available_dates[-1].date())
-    selected_start = pd.to_datetime(selected_start)
-
-    exposure_floor = 0.3
-    exposure_ceiling = 1.0
-    bullish_threshold = st.slider("Minimum Bullish Sentiment to Re-enter Market (%)", 0, 100, 30)
-
-    spy = data["SPY"].pct_change()
-    tlt = data["TLT"].pct_change()
-    fng_series = fng_df["FNG_Index"]
-
-    common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
-    common_idx = common_idx[common_idx >= selected_start]
-
-    spy = spy.loc[common_idx]
-    tlt = tlt.loc[common_idx]
-    fng_series = fng_series.loc[common_idx]
-    port_returns = (0.6 * spy + 0.4 * tlt).dropna()
-
-    var_series = port_returns.rolling(window=100).apply(lambda x: np.percentile(x, 5)).dropna()
-    common_idx = port_returns.index.intersection(var_series.index)
-    port_returns = port_returns.loc[common_idx]
-    var_series = var_series.loc[common_idx]
-    fng_series = fng_series.loc[common_idx]
-
-    def stop_loss_multiplier_from_fng(fng):
-        if fng < 25: return 1.5
-        elif fng < 50: return 1.2
-        elif fng < 75: return 1.0
-        else: return 0.8
-
-    sl_multiplier = fng_series.apply(stop_loss_multiplier_from_fng)
-    stop_loss_threshold = var_series * sl_multiplier
-    triggered = port_returns < stop_loss_threshold
-
-    bullish_series = clean_df.set_index("Date")["Bullish"].resample("D").ffill()
-    bullish_series = bullish_series.reindex(port_returns.index, method="ffill")
-
-    var_scaled = (var_series - var_series.min()) / (var_series.max() - var_series.min())
-    dynamic_exposure = exposure_ceiling - var_scaled * (exposure_ceiling - exposure_floor)
-    dynamic_exposure = dynamic_exposure.clip(exposure_floor, exposure_ceiling)
-
-    exposure_series = pd.Series(index=port_returns.index, dtype=float)
-    for i, date in enumerate(port_returns.index):
-        if i == 0:
-            exposure_series.iloc[i] = dynamic_exposure.iloc[i]
-        else:
-            if triggered.iloc[i]:
-                exposure_series.iloc[i] = exposure_floor
-            else:
-                if bullish_series.iloc[i] >= bullish_threshold:
-                    exposure_series.iloc[i] = dynamic_exposure.iloc[i]
-                else:
-                    exposure_series.iloc[i] = exposure_floor
-
-    adjusted_returns = port_returns * exposure_series.shift(1).fillna(exposure_ceiling)
-    cumulative_return = (1 + adjusted_returns).cumprod()
-    cumulative_no_sl = (1 + port_returns).cumprod()
-
-    st.markdown("### 📈 60/40 Portfolio: Raw vs Stop-Loss + Bullish Filter")
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=cumulative_no_sl.index, y=cumulative_no_sl / cumulative_no_sl.iloc[0], name="60/40 No Stop-Loss"))
-    fig.add_trace(go.Scatter(x=cumulative_return.index, y=cumulative_return / cumulative_return.iloc[0], name="60/40 with SL + Bullish Re-entry"))
-    fig.update_layout(title="Indexed Portfolio Value", yaxis_title="Value", xaxis_title="Date")
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("### 📟 Stop-Loss Trigger Stats by Sentiment Regime")
-
-    def classify_regime(fng):
-        if fng < 25: return "Extreme Fear"
-        elif fng < 50: return "Fear"
-        elif fng < 75: return "Greed"
-        else: return "Extreme Greed"
-
-    regime_series = fng_series.apply(classify_regime)
-    trigger_df = pd.DataFrame({
-        "Year": triggered.index.year,
-        "Triggered": triggered,
-        "Regime": regime_series
-    })
-
-    summary = (
-        trigger_df[trigger_df["Triggered"]]
-        .groupby(["Year", "Regime"])
-        .size()
-        .unstack(fill_value=0)
-    )
-
-    st.dataframe(summary)
-
-    st.markdown("### 📋 Strategy Summary Table")
-
-    def max_drawdown(cum):
-        roll_max = cum.cummax()
-        return (cum / roll_max - 1).min()
-
-    strat_r = adjusted_returns
-    naive_r = port_returns
-
-    stats_summary = pd.DataFrame({
-        "Return (%)": [
-            (cumulative_no_sl.iloc[-1] / cumulative_no_sl.iloc[0] - 1) * 100,
-            (cumulative_return.iloc[-1] / cumulative_return.iloc[0] - 1) * 100
-        ],
-        "Volatility (%)": [
-            naive_r.std() * np.sqrt(252) * 100,
-            strat_r.std() * np.sqrt(252) * 100
-        ],
-        "CVaR (95%) (%)": [
-            naive_r[naive_r < np.percentile(naive_r, 5)].mean() * 100,
-            strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100
-        ],
-        "Downside Dev. (%)": [
-            np.sqrt(np.mean(np.minimum(0, naive_r) ** 2)) * np.sqrt(252) * 100,
-            np.sqrt(np.mean(np.minimum(0, strat_r) ** 2)) * np.sqrt(252) * 100
-        ],
-        "Max Drawdown (%)": [
-            max_drawdown(cumulative_no_sl) * 100,
-            max_drawdown(cumulative_return) * 100
-        ]
-    }, index=["60/40 Only", "With SL + Bullish Re-entry"])
-
-    st.dataframe(stats_summary.round(2), use_container_width=True)
-"""
-
-# ---------------------------- TAB 8 ----------------------------------
-
-with tab8:
+with tab6:
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
 
     crisis_periods = {
@@ -1066,8 +781,8 @@ with tab8:
 
 
 
-# ---------------------------- TAB 9 ----------------------------------
-with tab9:
+# ---------------------------- TAB 7  ----------------------------------
+with tab7:
     st.markdown("## 📊 Full-Period Summary Metrics: Dynamic Weights + Dynamic Exposure")
 
     # 📘 Explanation block
