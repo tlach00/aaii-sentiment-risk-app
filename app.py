@@ -605,6 +605,7 @@ It only returns to normal levels when:
 ### 🔍 Interpretation of the Chart
 - The plot compares **indexed performance** of the raw 60/40 portfolio and the **strategy with stop-loss and bullish sentiment re-entry**
 - The strategy aims to **limit drawdowns** during downturns and re-enter at favorable sentiment conditions
+- The Vix serves as a comparator also for investor sentiment to see if what we built was necessary.
 
 The goal: **enhance downside protection** while participating in upside trends using a **sentiment-aware risk overlay**.
 """)
