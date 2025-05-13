@@ -83,7 +83,7 @@ def load_fng_data():
 fng_df, data = load_fng_data()
 
 # Tabs
-tab1, tab2, tab3, tab4, tab6 tab8, tab9 = st.tabs([
+tab1, tab2, tab3, tab4, tab6, tab8, tab9 = st.tabs([
     "📓Read me",
     "📁 Raw Excel Viewer",
     "📈 AAII Sentiment survey",
