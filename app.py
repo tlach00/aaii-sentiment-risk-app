@@ -978,20 +978,20 @@ with tab7:
 
 # ---------------------------- TAB 8 ----------------------------------
 with tab8:
-    st.markdown("## 🧪 Realistic Backtest with Transaction Costs")
+    st.markdown("## 🔁 Strategy Backtest with Real-Time Scaling (No Lookahead Bias)")
 
-    st.markdown("### 📈 Indexed Performance with Transaction Costs")
+    # === Portfolio start date selector
+    min_date = pd.to_datetime("2007-01-01")
+    max_date = pd.to_datetime("today")
+    start_date = st.date_input("📅 Portfolio start date:", value=min_date, min_value=min_date, max_value=max_date)
+    start_date = pd.to_datetime(start_date)
 
-    # === Parameters
-    transaction_cost = 0.001  # 0.1% per trade
-
-    # === Load data
+    # === Data
     spy = data["SPY"].pct_change()
     tlt = data["TLT"].pct_change()
     fng_series = fng_df["FNG_Index"]
     bullish_series = load_clean_data().set_index("Date")["Bullish"].reindex(spy.index).fillna(method="ffill")
 
-    start_date = pd.to_datetime("2007-01-01")
     common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
     common_idx = common_idx[common_idx >= start_date]
 
@@ -1000,7 +1000,7 @@ with tab8:
     fng_series = fng_series.loc[common_idx]
     bullish_series = bullish_series.loc[common_idx]
 
-    # === Get dynamic weights from F&G
+    # === Dynamic Weights
     def get_weights(fng):
         if fng < 25: return 0.3, 0.7
         elif fng < 50: return 0.5, 0.5
@@ -1011,10 +1011,9 @@ with tab8:
     w_spy = weights_df["w_spy"]
     w_tlt = weights_df["w_tlt"]
 
-    # === Build raw portfolio returns
     port_returns = (spy * w_spy + tlt * w_tlt).dropna()
 
-    # === Stop-loss logic
+    # === Stop-loss threshold
     var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
     var_series = var_series.reindex(port_returns.index, method="ffill")
     fng_series = fng_series.reindex(port_returns.index, method="ffill")
@@ -1029,12 +1028,17 @@ with tab8:
     threshold = var_series * sl_multiplier
     triggered = port_returns < threshold
 
-    min_bullish = 40
+    # === Real-time exposure control with rolling scaling
+    rolling_min = threshold.rolling(window=100, min_periods=30).min()
+    rolling_max = threshold.rolling(window=100, min_periods=30).max()
+    scaled_exposure = (threshold - rolling_min) / (rolling_max - rolling_min)
+    scaled_exposure = 1 - scaled_exposure
+    scaled_exposure = scaled_exposure.clip(0, 1)
+
     exposure = pd.Series(index=port_returns.index, dtype=float)
     exposure.iloc[0] = 1.0
     quiet_days = 0
-    scaled_exposure = (threshold - threshold.min()) / (threshold.max() - threshold.min())
-    scaled_exposure = 1 - scaled_exposure  # invert
+    min_bullish = 40
 
     for i in range(1, len(port_returns)):
         if triggered.iloc[i]:
@@ -1045,60 +1049,4 @@ with tab8:
             if quiet_days >= 3 and bullish_series.iloc[i] >= min_bullish:
                 exposure.iloc[i] = 1.0
             else:
-                exposure.iloc[i] = exposure.iloc[i - 1]
-
-    # === Apply exposure
-    raw_return = port_returns
-    strategy_returns = raw_return * exposure.shift(1).fillna(1.0)
-
-    # === Calculate turnover and transaction costs
-    w_spy_exp = w_spy * exposure
-    w_tlt_exp = w_tlt * exposure
-
-    weight_spy_shift = w_spy_exp.shift(1).fillna(method="bfill")
-    weight_tlt_shift = w_tlt_exp.shift(1).fillna(method="bfill")
-
-    turnover = (abs(w_spy_exp - weight_spy_shift) + abs(w_tlt_exp - weight_tlt_shift)).fillna(0)
-    fees = turnover * transaction_cost
-
-    net_return = strategy_returns - fees
-    cum_net = (1 + net_return).cumprod()
-    cum_raw = (1 + strategy_returns).cumprod()
-
-    # === SPY-only benchmark
-    spy_only_returns = spy.loc[net_return.index]
-    cum_spy = (1 + spy_only_returns).cumprod()
-
-    # === Plot
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=cum_net.index, y=cum_net / cum_net.iloc[0], name="F&G Strategy w/ Fees", line=dict(color="blue")))
-    fig.add_trace(go.Scatter(x=cum_spy.index, y=cum_spy / cum_spy.iloc[0], name="SPY Only", line=dict(color="red")))
-    fig.update_layout(title="Performance with Transaction Costs", yaxis_title="Indexed Value")
-    st.plotly_chart(fig, use_container_width=True)
-
-    # === Summary Table
-    def max_drawdown(series):
-        roll_max = series.cummax()
-        return (series / roll_max - 1).min() * 100
-
-    stats_df = pd.DataFrame({
-        "Return (%)": [
-            (cum_spy.iloc[-1] / cum_spy.iloc[0] - 1) * 100,
-            (cum_net.iloc[-1] / cum_net.iloc[0] - 1) * 100
-        ],
-        "Volatility (%)": [
-            spy_only_returns.std() * np.sqrt(252) * 100,
-            net_return.std() * np.sqrt(252) * 100
-        ],
-        "Sharpe Ratio": [
-            (spy_only_returns.mean() / spy_only_returns.std()) * np.sqrt(252),
-            (net_return.mean() / net_return.std()) * np.sqrt(252)
-        ],
-        "Max Drawdown (%)": [
-            max_drawdown(cum_spy),
-            max_drawdown(cum_net)
-        ]
-    }, index=["SPY Only", "F&G Strategy + Fees"])
-
-    st.markdown("### 📋 Updated Summary Table")
-    st.dataframe(stats_df.round(2), use_container_width=True)
+                exposu
