@@ -801,12 +801,10 @@ The goal: **enhance downside protection** while participating in upside trends u
             st.warning(f"⚠️ Skipping {label} due to data alignment issue: {e}")
 
 
-
 # ---------------------------- TAB 7  ----------------------------------
 with tab7:
     st.markdown("## 📊 Full-Period Summary Metrics: Dynamic Weights + Dynamic Exposure")
 
-    # 📘 Explanation block
     st.markdown("""
     ### ⚙️ Strategy Description
 
@@ -823,17 +821,15 @@ with tab7:
     This aims to preserve capital in volatile periods and boost return participation during greed regimes.
     """)
 
-    # === Portfolio start date selector
     min_date = pd.to_datetime("2007-01-01")
     max_date = pd.to_datetime("today")
     start_date = st.date_input("📅 Portfolio start date:", value=min_date, min_value=min_date, max_value=max_date)
     start_date = pd.to_datetime(start_date)
 
-    # === Data
     spy = data["SPY"].pct_change()
     tlt = data["TLT"].pct_change()
-    fng_series = fng_df["FNG_Index"]
-    bullish_series = load_clean_data().set_index("Date")["Bullish"].reindex(spy.index).fillna(method="ffill")
+    fng_series = fng_df["FNG_Index"].shift(1)  # shift to avoid lookahead
+    bullish_series = load_clean_data().set_index("Date")["Bullish"].reindex(spy.index).fillna(method="ffill").shift(1)
 
     common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
     common_idx = common_idx[common_idx >= start_date]
@@ -843,7 +839,6 @@ with tab7:
     fng_series = fng_series.loc[common_idx]
     bullish_series = bullish_series.loc[common_idx]
 
-    # === Dynamic Weights
     def get_weights(fng):
         if fng < 25: return 0.3, 0.7
         elif fng < 50: return 0.5, 0.5
@@ -856,10 +851,8 @@ with tab7:
 
     port_returns = (spy * w_spy + tlt * w_tlt).dropna()
 
-    # === Stop-loss threshold
-    var_series = port_returns.rolling(100).apply(lambda x: np.percentile(x, 5)).dropna()
-    var_series = var_series.reindex(port_returns.index, method="ffill")
-    fng_series = fng_series.reindex(port_returns.index, method="ffill")
+    var_series = port_returns.rolling(100, min_periods=100).apply(lambda x: np.percentile(x, 5))
+    var_series = var_series.reindex(port_returns.index).fillna(method="ffill")
 
     def stop_loss_multiplier(fng):
         if fng < 25: return 1.5
@@ -871,13 +864,14 @@ with tab7:
     threshold = var_series * sl_multiplier
     triggered = port_returns < threshold
 
-    # === Exposure control with bullish re-entry
+    expanding_min = threshold.expanding().min()
+    expanding_max = threshold.expanding().max()
+    scaled_exposure = 1 - (threshold - expanding_min) / (expanding_max - expanding_min + 1e-6)
+
     min_bullish = 40
     exposure = pd.Series(index=port_returns.index, dtype=float)
     exposure.iloc[0] = 1.0
     quiet_days = 0
-    scaled_exposure = (threshold - threshold.min()) / (threshold.max() - threshold.min())
-    scaled_exposure = 1 - scaled_exposure  # invert so higher risk → lower exposure
 
     for i in range(1, len(port_returns)):
         if triggered.iloc[i]:
@@ -890,11 +884,9 @@ with tab7:
             else:
                 exposure.iloc[i] = exposure.iloc[i - 1]
 
-    # === Final strategy returns
     strategy_returns = port_returns * exposure.shift(1).fillna(1.0)
     cum_strategy = (1 + strategy_returns).cumprod()
 
-    # === 60/40 benchmark
     static_returns = (0.6 * spy + 0.4 * tlt).reindex(cum_strategy.index)
     cum_static = (1 + static_returns).cumprod()
 
@@ -934,7 +926,6 @@ with tab7:
         ]
     }, index=["60/40 Only", "F&G Dynamic Weights + SL"])
 
-    # === Allocation Area Chart (SPY vs TLT Weights)
     st.markdown("### 🧮 Dynamic Allocation Over Time (SPY vs TLT Weights)")
 
     fig_alloc = go.Figure()
@@ -963,7 +954,6 @@ with tab7:
     )
     st.plotly_chart(fig_alloc, use_container_width=True)
 
-    # === Performance Chart
     st.markdown(f"### 📈 Indexed Performance (Since {start_date.date()})")
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=cum_static.index, y=cum_static / cum_static.iloc[0], name="60/40 Portfolio", line=dict(color="navy")))
@@ -971,9 +961,10 @@ with tab7:
     fig.update_layout(title="Full Period Indexed Performance", yaxis_title="Indexed Value", height=450)
     st.plotly_chart(fig, use_container_width=True)
 
-    # === Final Table
     st.markdown("### 📋 Summary Table")
     st.dataframe(stats_all.round(2), use_container_width=True)
+
+
 
 # ---------------------------- TAB 8 ----------------------------------
 with tab8:
