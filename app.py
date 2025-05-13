@@ -83,15 +83,14 @@ def load_fng_data():
 fng_df, data = load_fng_data()
 
 # Tabs
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📓Read me",
     "📁 Raw Excel Viewer",
     "📈 AAII Sentiment survey",
     "😱 CNN F&G replication", 
     "📟 F&G in Risk Management",
     "🧨 F&G Stop-Loss",
-    "⚙️ Dynamic stop loss Portfolio", 
-    "TEST"
+    "⚙️ Dynamic stop loss Portfolio"
 ])
 # ---------------------------- TAB 1 ----------------------------------
 with tab1:
@@ -964,139 +963,3 @@ with tab7:
     st.markdown("### 📋 Summary Table")
     st.dataframe(stats_all.round(2), use_container_width=True)
 
-
-
-# ---------------------------- TAB 8 ----------------------------------
-with tab8:
-    st.markdown("## 🔎 Sentiment-Aware Portfolio vs SPY (No Lookahead, With Costs)")
-
-    # Parameters
-    min_bullish = 40
-    transaction_cost = 0.001  # 0.1% cost per transaction
-
-    # Select start date
-    start_date = st.date_input("Start Date", value=pd.to_datetime("2007-01-01"))
-    start_date = pd.to_datetime(start_date)
-
-    # Load and align data
-    spy = data["SPY"].pct_change()
-    tlt = data["TLT"].pct_change()
-    fng_series = fng_df["FNG_Index"]
-    bullish_series = clean_df.set_index("Date")["Bullish"]
-
-    # Align indices and shift by 1 day to remove lookahead bias
-    common_idx = spy.dropna().index.intersection(tlt.dropna().index).intersection(fng_series.dropna().index)
-    common_idx = common_idx[common_idx >= start_date]
-
-    spy = spy.loc[common_idx]
-    tlt = tlt.loc[common_idx]
-    fng_series = fng_series.reindex(common_idx).fillna(method="ffill").shift(1)
-    bullish_series = bullish_series.reindex(common_idx).fillna(method="ffill").shift(1)
-
-    # Drop initial NaNs from shifting
-    mask = fng_series.notna() & bullish_series.notna()
-    spy = spy[mask]
-    tlt = tlt[mask]
-    fng_series = fng_series[mask]
-    bullish_series = bullish_series[mask]
-
-    # Dynamic weights based on F&G
-    def get_weights(fng):
-        if fng < 25: return 0.3, 0.7
-        elif fng < 50: return 0.5, 0.5
-        elif fng < 75: return 0.7, 0.3
-        else: return 0.85, 0.15
-
-    weights_df = fng_series.apply(lambda x: pd.Series(get_weights(x), index=["w_spy", "w_tlt"]))
-    w_spy = weights_df["w_spy"]
-    w_tlt = weights_df["w_tlt"]
-    port_returns = (spy * w_spy + tlt * w_tlt)
-
-    # Rolling VaR
-    var_series = port_returns.rolling(100, min_periods=100).apply(lambda x: np.percentile(x, 5))
-    var_series = var_series.reindex(port_returns.index).fillna(method="ffill")
-
-    # Stop-loss multiplier
-    def stop_loss_multiplier(fng):
-        if fng < 25: return 1.5
-        elif fng < 50: return 1.2
-        elif fng < 75: return 1.0
-        else: return 0.8
-
-    sl_multiplier = fng_series.apply(stop_loss_multiplier)
-    threshold = var_series * sl_multiplier
-    triggered = port_returns < threshold
-
-    # Scaled exposure (expanding window, no lookahead)
-    expanding_min = threshold.expanding().min()
-    expanding_max = threshold.expanding().max()
-    scaled_exposure = 1 - (threshold - expanding_min) / (expanding_max - expanding_min + 1e-6)
-
-    # Exposure control with re-entry
-    exposure = pd.Series(index=port_returns.index, dtype=float)
-    exposure.iloc[0] = 1.0
-    quiet_days = 0
-    for i in range(1, len(port_returns)):
-        if triggered.iloc[i]:
-            exposure.iloc[i] = scaled_exposure.iloc[i] * 0.7 + 0.3
-            quiet_days = 0
-        else:
-            quiet_days += 1
-            if quiet_days >= 3 and bullish_series.iloc[i] >= min_bullish:
-                exposure.iloc[i] = 1.0
-            else:
-                exposure.iloc[i] = exposure.iloc[i - 1]
-
-    # Transaction costs
-    exposure_change = exposure.diff().abs().fillna(0)
-    net_returns = port_returns * exposure.shift(1).fillna(1.0)
-    transaction_costs = exposure_change * transaction_cost
-    net_returns -= transaction_costs
-
-    # Cumulative returns
-    cum_strategy = (1 + net_returns).cumprod()
-    cum_spy = (1 + spy.loc[cum_strategy.index]).cumprod()
-
-    # Summary table
-    def max_drawdown(c):
-        roll_max = c.cummax()
-        return (c / roll_max - 1).min()
-
-    sharpe = lambda r: (r.mean() / r.std()) * np.sqrt(252)
-
-    strat_r = net_returns
-    spy_r = spy.loc[strat_r.index]
-
-    stats = pd.DataFrame({
-        "Return (%)": [
-            (cum_spy.iloc[-1] / cum_spy.iloc[0] - 1) * 100,
-            (cum_strategy.iloc[-1] / cum_strategy.iloc[0] - 1) * 100
-        ],
-        "Volatility (%)": [
-            spy_r.std() * np.sqrt(252) * 100,
-            strat_r.std() * np.sqrt(252) * 100
-        ],
-        "CVaR (95%) (%)": [
-            spy_r[spy_r < np.percentile(spy_r, 5)].mean() * 100,
-            strat_r[strat_r < np.percentile(strat_r, 5)].mean() * 100
-        ],
-        "Max Drawdown (%)": [
-            max_drawdown(cum_spy) * 100,
-            max_drawdown(cum_strategy) * 100
-        ],
-        "Sharpe Ratio": [
-            sharpe(spy_r),
-            sharpe(strat_r)
-        ]
-    }, index=["SPY Only", "F&G Dyn + SL (No Lookahead)"])
-
-    # Plot results
-    st.markdown("### 📈 Indexed Performance")
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=cum_spy.index, y=cum_spy / cum_spy.iloc[0], name="SPY"))
-    fig.add_trace(go.Scatter(x=cum_strategy.index, y=cum_strategy / cum_strategy.iloc[0], name="F&G Dynamic + SL"))
-    fig.update_layout(yaxis_title="Indexed Value", xaxis_title="Date")
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("### 📋 Summary Table")
-    st.dataframe(stats.round(2), use_container_width=True)
