@@ -588,7 +588,7 @@ These sentiment-based models allow risk thresholds to adapt to investor emotions
 
 with tab6:
     st.markdown("## 🧨 F&G + Bullish-Adjusted Stop-Loss Performance During Crises (60/40 SPY/TLT)")
-st.markdown("""
+    st.markdown("""
 ### 🧠 Strategy Overview
 
 This strategy dynamically reduces portfolio exposure during high-risk periods using:
